@@ -22,27 +22,10 @@ os.makedirs(OPTIMIZATION_DIR, exist_ok=True)
 def run_optimizer_page():
     """Run the strategy optimizer page"""
     
-    st.title("Bitcoin Strategy Analyzer")
+    st.title("Bitcoin Strategy Optimizer")
     
-    # Sidebar for selecting test type
-    st.sidebar.header("Test Type")
-    test_type = st.sidebar.radio(
-        "Select Test Type",
-        ["Optimized Strategies", "Custom Backtest"],
-        index=0,
-        help="Optimized shows pre-calculated best parameters, Custom allows setting your own parameters"
-    )
-    
-    if test_type == "Optimized Strategies":
-        run_optimizer_view()
-    else:
-        st.info("Custom backtesting functionality will be available in a future update.")
-        st.markdown("""
-        The Custom Backtest feature will allow you to:
-        - Set your own parameters for each strategy
-        - Compare your custom parameters against optimized ones
-        - See how different parameters affect performance
-        """)
+    # Just run the optimized view directly
+    run_optimizer_view()
 
 def run_optimizer_view():
     """Display optimized strategy results"""
