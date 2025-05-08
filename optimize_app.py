@@ -143,74 +143,9 @@ def run_optimizer_view():
                 st.error(f"Error loading results for {strategy}: {str(e)}")
                 return None
         
-        # If file doesn't exist, generate sample data for demonstration
-        # This will be replaced by real data from GitHub Actions in production
-        st.warning(f"No optimization file found for {strategy} with the selected time period. Using sample data for demonstration.")
-        
-        # Create sample data based on strategy
-        if strategy == "dca":
-            return {
-                "strategy": strategy,
-                "best_params": {
-                    "exchange_id": "binance",
-                    "weekly_investment": 100.0,
-                    "use_discount": True
-                },
-                "performance": {
-                    "final_btc": 0.45678912,
-                    "max_drawdown": 0.21,
-                    "sortino_ratio": 1.35
-                }
-            }
-        elif strategy == "maco":
-            return {
-                "strategy": strategy,
-                "best_params": {
-                    "exchange_id": "coinbase",
-                    "weekly_investment": 150.0,
-                    "use_discount": False,
-                    "short_window": 15,
-                    "long_window": 75
-                },
-                "performance": {
-                    "final_btc": 0.55678912,
-                    "max_drawdown": 0.28,
-                    "sortino_ratio": 1.12
-                }
-            }
-        elif strategy == "rsi":
-            return {
-                "strategy": strategy,
-                "best_params": {
-                    "exchange_id": "kraken",
-                    "weekly_investment": 120.0,
-                    "use_discount": True,
-                    "rsi_period": 12,
-                    "oversold_threshold": 28,
-                    "overbought_threshold": 72
-                },
-                "performance": {
-                    "final_btc": 0.60123456,
-                    "max_drawdown": 0.25,
-                    "sortino_ratio": 1.48
-                }
-            }
-        else:  # volatility
-            return {
-                "strategy": strategy,
-                "best_params": {
-                    "exchange_id": "binance",
-                    "weekly_investment": 200.0,
-                    "use_discount": True,
-                    "vol_window": 18,
-                    "vol_threshold": 1.75
-                },
-                "performance": {
-                    "final_btc": 0.58123456,
-                    "max_drawdown": 0.30,
-                    "sortino_ratio": 1.22
-                }
-            }
+        # If file doesn't exist, show error and return None
+        st.error(f"No optimization file found for {strategy} with the selected time period.")
+        return None
     
     # Automatically load results for selected strategies
     if selected_strategies:
