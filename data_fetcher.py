@@ -68,20 +68,31 @@ def fetch_bitcoin_price_data(start_date_str, end_date_str, currency="AUD"):
             )
             
             # Make sure we have a row for each day in the range
-            min_date = df_prices["date"].min()
-            max_date = df_prices["date"].max()
-            
-            # Create a date range if we have valid min and max dates
-            if min_date is not None and max_date is not None:
-                # Create a list of dates from min_date to max_date
-                # This is a workaround for potential type issues with date_range
-                from datetime import datetime, timedelta
-                start_date = min_date if isinstance(min_date, datetime) else min_date.to_pydatetime()
-                end_date = max_date if isinstance(max_date, datetime) else max_date.to_pydatetime()
-                days_diff = (end_date - start_date).days + 1
+            if len(df_prices) > 0:
+                # Get the min and max date objects from the dataframe
+                # Convert to native Python datetime objects for easier handling
+                first_date_series = df_prices.select(pl.min("date"))
+                last_date_series = df_prices.select(pl.max("date"))
                 
-                date_list = [start_date + timedelta(days=i) for i in range(days_diff)]
-                full_date_range = pl.Series(date_list)
+                first_date = first_date_series[0, 0]
+                last_date = last_date_series[0, 0]
+                
+                # Only proceed if we have valid dates
+                if first_date is not None and last_date is not None:
+                    # Ensure they're Python datetime objects
+                    if not isinstance(first_date, datetime):
+                        first_date = datetime.fromisoformat(str(first_date))
+                    
+                    if not isinstance(last_date, datetime):
+                        last_date = datetime.fromisoformat(str(last_date))
+                    
+                    # Create date range manually
+                    days_diff = (last_date - first_date).days + 1
+                    date_list = [first_date + timedelta(days=i) for i in range(days_diff)]
+                    full_date_range = pl.Series(date_list)
+                else:
+                    # If we couldn't get valid dates, use the existing date column
+                    full_date_range = df_prices["date"]
             else:
                 # Fallback if no valid dates
                 full_date_range = df_prices["date"]

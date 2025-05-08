@@ -37,14 +37,19 @@ Dollar Cost Averaging (DCA) strategy. See which approaches might generate alpha 
 
 # Sidebar for date selection and strategy parameters
 st.sidebar.header("Backtest Parameters")
+st.sidebar.markdown("""
+⚠️ Note: CoinGecko's free API limits historical data to 1 year.
+For longer backtests, an API key would be required.
+""")
 
 # Date range selection
 today = datetime.date.today()
-default_start_date = today - timedelta(days=365 * 3)  # 3 years ago by default
+default_start_date = today - timedelta(days=364)  # 1 year ago by default (CoinGecko API limits free tier to 1 year)
 
 start_date = st.sidebar.date_input(
     "Start Date",
     value=default_start_date,
+    min_value=today - timedelta(days=364),  # CoinGecko API 1-year limit
     max_value=today - timedelta(days=30)  # At least 30 days of data
 )
 
@@ -269,8 +274,8 @@ if run_button:
                 for strategy_name, strategy_df in strategy_results.items():
                     max_drawdown = calculate_max_drawdown(strategy_df)
                     sortino = calculate_sortino_ratio(strategy_df)
-                    final_btc = strategy_df["cumulative_btc"].iloc[-1]
-                    total_invested = strategy_df["cumulative_investment"].iloc[-1]
+                    final_btc = strategy_df["cumulative_btc"].tail(1).item()
+                    total_invested = strategy_df["cumulative_investment"].tail(1).item()
                     
                     performance_metrics[strategy_name] = {
                         "final_btc": final_btc,
@@ -343,14 +348,17 @@ if run_button:
                         })
                 
                 if comparison_data:
-                    comparison_df = pd.DataFrame(comparison_data)
+                    comparison_df = pl.DataFrame(comparison_data)
                     st.dataframe(comparison_df, use_container_width=True)
                     
                     # Highlight the best strategy
                     if len(comparison_data) > 0:
-                        best_alpha_idx = comparison_df["BTC Alpha (%)"].idxmax()
-                        best_strategy = comparison_df.iloc[best_alpha_idx]["Strategy"]
-                        best_alpha = comparison_df.iloc[best_alpha_idx]["BTC Alpha (%)"]
+                        # Find the row with the maximum BTC Alpha
+                        best_row = comparison_df.filter(
+                            pl.col("BTC Alpha (%)") == pl.col("BTC Alpha (%)").max()
+                        ).row(0)
+                        best_strategy = best_row[0]  # First column is Strategy
+                        best_alpha = best_row[1]     # Second column is BTC Alpha (%)
                         
                         if best_alpha > 0:
                             st.success(f"The best performing strategy is **{best_strategy}** with a **{best_alpha}%** BTC alpha over DCA.")
