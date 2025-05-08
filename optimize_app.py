@@ -1,8 +1,8 @@
 """
 Strategy optimization page for the Bitcoin Strategy Backtester.
 
-This module provides a Streamlit interface for optimizing trading strategies
-using Bayesian optimization to find the best parameters and exchanges.
+This module provides a Streamlit interface for viewing optimization results
+that have been pre-computed and saved to Arrow files.
 """
 
 import streamlit as st
@@ -10,17 +10,14 @@ import datetime
 import plotly.graph_objects as go
 import pandas as pd
 import polars as pl
+import os
+import subprocess
 from datetime import timedelta
+from pathlib import Path
 
-from optimize_strategies import (
-    optimize_dca_strategy,
-    optimize_maco_strategy,
-    optimize_rsi_strategy,
-    optimize_volatility_strategy,
-    optimize_all_strategies
-)
-from fee_models import load_exchange_profiles
-
+# Create a directory for storing optimization results if it doesn't exist
+OPTIMIZATION_DIR = "data/optimizations"
+os.makedirs(OPTIMIZATION_DIR, exist_ok=True)
 
 def run_optimizer_page():
     """Run the strategy optimizer page"""
@@ -30,7 +27,7 @@ def run_optimizer_page():
     This tool uses Bayesian Optimization to find the best parameters for each strategy,
     including the optimal exchange to use based on fee structures.
     
-    The optimization process can take several minutes depending on the date range and number of iterations.
+    **Note:** Optimizations are saved to disk as Arrow files to avoid re-running them each time.
     """)
     
     # Sidebar for optimizer parameters
@@ -75,7 +72,8 @@ def run_optimizer_page():
     optimize_volatility = st.sidebar.checkbox("Volatility-Based Strategy", value=True)
     
     # Button to start optimization
-    optimize_button = st.sidebar.button("Run Optimization", type="primary")
+    run_button = st.sidebar.button("Run New Optimization", type="primary")
+    load_button = st.sidebar.button("Load Saved Results", type="secondary")
     
     # Display explanatory text
     with st.expander("How Bayesian Optimization Works"):
@@ -98,91 +96,216 @@ def run_optimizer_page():
         - Weekly investment amounts
         """)
     
-    if optimize_button:
-        # Format dates for API
-        start_date_str = start_date.strftime("%d-%m-%Y")
-        end_date_str = end_date.strftime("%d-%m-%Y")
-        
-        selected_strategies = []
-        if optimize_dca:
-            selected_strategies.append("dca")
-        if optimize_maco:
-            selected_strategies.append("maco")
-        if optimize_rsi:
-            selected_strategies.append("rsi")
-        if optimize_volatility:
-            selected_strategies.append("volatility")
-        
+    # Format dates for file paths and function calls
+    start_date_str = start_date.strftime("%d-%m-%Y")
+    end_date_str = end_date.strftime("%d-%m-%Y")
+    
+    selected_strategies = []
+    if optimize_dca:
+        selected_strategies.append("dca")
+    if optimize_maco:
+        selected_strategies.append("maco")
+    if optimize_rsi:
+        selected_strategies.append("rsi")
+    if optimize_volatility:
+        selected_strategies.append("volatility")
+    
+    # Function to get file path for a strategy
+    def get_optimization_file_path(strategy):
+        filename = f"{strategy}_{start_date_str.replace('-', '')}_{end_date_str.replace('-', '')}_{currency}.arrow"
+        return os.path.join(OPTIMIZATION_DIR, filename)
+    
+    # Function to check if optimization results exist for a strategy
+    def optimization_exists(strategy):
+        file_path = get_optimization_file_path(strategy)
+        return os.path.exists(file_path)
+    
+    # Function to load optimization results for a strategy
+    def load_optimization_results(strategy):
+        file_path = get_optimization_file_path(strategy)
+        if os.path.exists(file_path):
+            try:
+                # Load Arrow file using Polars
+                df = pl.read_ipc(file_path)
+                
+                # Convert to dictionary format expected by display function
+                row = df.row(0, named=True)  # Get first row as dict
+                
+                # Extract strategy name
+                strategy_name = row.get("strategy", strategy)
+                
+                # Extract parameters
+                best_params = {}
+                for key, value in row.items():
+                    if key.startswith("param_"):
+                        param_name = key[6:]  # Remove "param_" prefix
+                        best_params[param_name] = value
+                
+                # Extract performance metrics
+                performance = {}
+                for key, value in row.items():
+                    if key.startswith("performance_"):
+                        metric_name = key[12:]  # Remove "performance_" prefix
+                        performance[metric_name] = value
+                
+                # Create result dictionary in expected format
+                result = {
+                    "strategy": strategy_name,
+                    "best_params": best_params,
+                    "performance": performance
+                }
+                
+                return result
+            except Exception as e:
+                st.error(f"Error loading results for {strategy}: {str(e)}")
+                return None
+        return None
+
+    # Handle run button click - start optimization process
+    if run_button:
         if not selected_strategies:
             st.error("Please select at least one strategy to optimize.")
         else:
             try:
+                # Use subprocess to run the optimization script
                 with st.spinner("Running optimization... This may take several minutes."):
-                    if len(selected_strategies) == 1:
-                        # Optimize single strategy
-                        strategy = selected_strategies[0]
-                        if strategy == "dca":
-                            result = optimize_dca_strategy(start_date_str, end_date_str, currency, n_calls)
-                        elif strategy == "maco":
-                            result = optimize_maco_strategy(start_date_str, end_date_str, currency, n_calls)
-                        elif strategy == "rsi":
-                            result = optimize_rsi_strategy(start_date_str, end_date_str, currency, n_calls)
-                        elif strategy == "volatility":
-                            result = optimize_volatility_strategy(start_date_str, end_date_str, currency, n_calls)
+                    # For each selected strategy, run the optimization script
+                    for strategy in selected_strategies:
+                        # Run the optimization script in a subprocess
+                        st.info(f"Optimizing {strategy.upper()} strategy...")
+                        cmd = [
+                            "python", "run_optimizations.py",
+                            f"--strategy={strategy}",
+                            f"--start-date={start_date_str}",
+                            f"--end-date={end_date_str}",
+                            f"--currency={currency}",
+                            f"--n-calls={n_calls}"
+                        ]
+                        process = subprocess.run(cmd, capture_output=True, text=True)
                         
+                        if process.returncode != 0:
+                            st.error(f"Error running optimization for {strategy}: {process.stderr}")
+                        else:
+                            st.success(f"Optimization for {strategy} completed successfully")
+                
+                # After all optimizations are done, load the results
+                all_results = {}
+                for strategy in selected_strategies:
+                    if optimization_exists(strategy):
+                        result = load_optimization_results(strategy)
                         if result is not None:
-                            display_optimization_results(result, single_strategy=True)
-                        else:
-                            st.error("Optimization failed. Please try again with different parameters.")
-                    else:
-                        # Optimize subset of strategies or all
-                        all_results = {}
-                        
-                        for strategy in selected_strategies:
-                            st.info(f"Optimizing {strategy.upper()} strategy...")
-                            if strategy == "dca":
-                                result = optimize_dca_strategy(start_date_str, end_date_str, currency, n_calls)
-                            elif strategy == "maco":
-                                result = optimize_maco_strategy(start_date_str, end_date_str, currency, n_calls)
-                            elif strategy == "rsi":
-                                result = optimize_rsi_strategy(start_date_str, end_date_str, currency, n_calls)
-                            elif strategy == "volatility":
-                                result = optimize_volatility_strategy(start_date_str, end_date_str, currency, n_calls)
-                            
-                            # Only add result if not None
-                            if result is not None:
-                                all_results[strategy] = result
-                        
-                        # Check if we have any valid results
-                        if all_results:
-                            # Find best strategy among the optimized ones
-                            best_strategy_name = max(
-                                all_results.items(),
-                                key=lambda x: x[1]["performance"]["final_btc"]
-                            )[0]
-                            
-                            best_strategy = all_results[best_strategy_name]
-                            
-                            display_optimization_results(all_results, best_strategy_name, single_strategy=False)
-                        else:
-                            st.error("No valid optimization results were found. Please try different parameters or strategies.")
+                            all_results[strategy] = result
+                
+                # Display results
+                if len(all_results) == 1:
+                    # Single strategy optimization
+                    strategy = list(all_results.keys())[0]
+                    display_optimization_results(all_results[strategy], single_strategy=True)
+                elif len(all_results) > 1:
+                    # Multi-strategy optimization
+                    # Find best strategy among optimized ones
+                    best_strategy_name = max(
+                        all_results.items(),
+                        key=lambda x: x[1]["performance"]["final_btc"]
+                    )[0]
+                    
+                    display_optimization_results(all_results, best_strategy_name, single_strategy=False)
+                else:
+                    st.error("No optimization results were loaded. Try running the optimizations again.")
+            
             except Exception as e:
-                st.error(f"An error occurred during optimization: {str(e)}")
+                st.error(f"An error occurred: {str(e)}")
+    
+    # Handle load button click - load existing results
+    elif load_button:
+        if not selected_strategies:
+            st.error("Please select at least one strategy to load results for.")
+        else:
+            try:
+                all_results = {}
+                missing_results = []
+                
+                # Try to load results for each selected strategy
+                for strategy in selected_strategies:
+                    if optimization_exists(strategy):
+                        result = load_optimization_results(strategy)
+                        if result is not None:
+                            all_results[strategy] = result
+                            st.success(f"Loaded optimization results for {strategy.upper()}")
+                    else:
+                        missing_results.append(strategy)
+                
+                # Warn about missing results
+                if missing_results:
+                    missing_str = ", ".join([s.upper() for s in missing_results])
+                    st.warning(f"No saved results found for: {missing_str}. Run optimization first.")
+                
+                # Display results
+                if len(all_results) == 1:
+                    # Single strategy optimization
+                    strategy = list(all_results.keys())[0]
+                    display_optimization_results(all_results[strategy], single_strategy=True)
+                elif len(all_results) > 1:
+                    # Multi-strategy optimization
+                    # Find best strategy among optimized ones
+                    best_strategy_name = max(
+                        all_results.items(),
+                        key=lambda x: x[1]["performance"]["final_btc"]
+                    )[0]
+                    
+                    display_optimization_results(all_results, best_strategy_name, single_strategy=False)
+                else:
+                    st.error("No optimization results were loaded. Try running the optimizations first.")
+            
+            except Exception as e:
+                st.error(f"An error occurred while loading results: {str(e)}")
     else:
-        # Display instructions when page first loads
-        st.info("👈 Select your optimization parameters and click 'Run Optimization' to start.")
-        
-        st.markdown("""
-        ## What the optimizer will find:
-        
-        1. **The best exchange** for each strategy based on fee structures
-        2. **Optimal parameters** for each trading strategy
-        3. **Ideal weekly investment** amount for maximum BTC accumulation
-        4. **Comparative performance** showing which strategy works best
-        
-        The optimization uses historical Bitcoin price data from the selected date range to simulate 
-        strategy performance under different parameter combinations.
-        """)
+        # Show existing optimization files
+        optimization_files = list(Path(OPTIMIZATION_DIR).glob("*.arrow")) + list(Path(OPTIMIZATION_DIR).glob("*.ipc"))
+        if optimization_files:
+            st.info("Saved optimization results exist. Click 'Load Saved Results' to view them.")
+            
+            # Show a table of available optimization files
+            file_data = []
+            for file_path in optimization_files:
+                file_name = file_path.name
+                parts = file_name.split('_')
+                if len(parts) >= 4:
+                    strategy = parts[0].upper()
+                    # Extract dates from filename
+                    start = parts[1]
+                    end = parts[2].split('.')[0] if '.' in parts[2] else parts[2]
+                    # Format dates for display
+                    if len(start) == 8:  # DDMMYYYY format
+                        start = f"{start[:2]}-{start[2:4]}-{start[4:]}"
+                    if len(end) == 8:  # DDMMYYYY format
+                        end = f"{end[:2]}-{end[2:4]}-{end[4:]}"
+                    
+                    file_data.append({
+                        "Strategy": strategy,
+                        "Start Date": start,
+                        "End Date": end,
+                        "File": file_name
+                    })
+            
+            if file_data:
+                st.subheader("Available Optimization Results")
+                st.dataframe(pd.DataFrame(file_data))
+        else:
+            # Display instructions when page first loads
+            st.info("👈 Select your optimization parameters and click 'Run New Optimization' to start.")
+            
+            st.markdown("""
+            ## What the optimizer will find:
+            
+            1. **The best exchange** for each strategy based on fee structures
+            2. **Optimal parameters** for each trading strategy
+            3. **Ideal weekly investment** amount for maximum BTC accumulation
+            4. **Comparative performance** showing which strategy works best
+            
+            The optimization uses historical Bitcoin price data from the selected date range to simulate 
+            strategy performance under different parameter combinations.
+            """)
 
 
 def display_optimization_results(results, best_strategy_name=None, single_strategy=True):
