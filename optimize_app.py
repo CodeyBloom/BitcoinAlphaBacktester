@@ -256,7 +256,11 @@ def display_optimization_results(results, best_strategy_name=None, single_strate
         st.dataframe(comparison_df, use_container_width=True)
         
         # Highlight the best strategy
-        st.success(f"The best performing strategy is **{best_strategy_name.upper()}** with these parameters:")
+        if best_strategy_name is not None:
+            strategy_display = best_strategy_name.upper()
+        else:
+            strategy_display = "UNKNOWN"
+        st.success(f"The best performing strategy is **{strategy_display}** with these parameters:")
         
         best_result = results[best_strategy_name]
         best_params = best_result["best_params"]
