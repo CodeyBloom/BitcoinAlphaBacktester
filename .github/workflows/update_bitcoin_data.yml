@@ -1,0 +1,40 @@
+name: Update Bitcoin Data and Optimizations
+
+on:
+  schedule:
+    # Run weekly on Monday at 2:00 UTC
+    - cron: '0 2 * * 1'
+  workflow_dispatch:  # Allow manual triggering
+
+jobs:
+  update_data_and_optimize:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v3
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      
+      - name: Fetch latest Bitcoin data
+        run: python scripts/update_bitcoin_data.py
+      
+      - name: Run optimizations for predefined time periods
+        run: python scripts/run_all_optimizations.py
+      
+      - name: Commit and push if there are changes
+        run: |
+          git config --local user.email "actions@github.com"
+          git config --local user.name "GitHub Actions"
+          git add data/
+          git commit -m "Update Bitcoin data and optimization results" || echo "No changes to commit"
+          git push
