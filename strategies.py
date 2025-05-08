@@ -249,7 +249,7 @@ def rsi_strategy(df, weekly_investment, rsi_period=14, oversold_threshold=30, ov
     
     for i in range(len(df)):
         # Get current RSI (or 50 if not available yet)
-        current_rsi = df.iloc[i]["rsi"] if not pd.isna(df.iloc[i]["rsi"]) else 50
+        current_rsi = df.iloc[i]["rsi"] if not pl.Series([df.iloc[i]["rsi"]]).is_null().item() else 50
         
         # Accumulate weekly investment on Sundays
         if df.iloc[i]["is_sunday"]:
@@ -343,7 +343,7 @@ def volatility_strategy(df, weekly_investment, vol_window=14, vol_threshold=1.5)
             current_vol = df.iloc[i]["volatility"]
             avg_vol = df.iloc[i]["avg_volatility"]
             
-            if not pd.isna(current_vol) and not pd.isna(avg_vol) and avg_vol > 0:
+            if not pl.Series([current_vol]).is_null().item() and not pl.Series([avg_vol]).is_null().item() and avg_vol > 0:
                 vol_ratio = current_vol / avg_vol
                 
                 # Determine investment factor based on volatility

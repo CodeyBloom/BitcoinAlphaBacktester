@@ -38,18 +38,19 @@ Dollar Cost Averaging (DCA) strategy. See which approaches might generate alpha 
 # Sidebar for date selection and strategy parameters
 st.sidebar.header("Backtest Parameters")
 st.sidebar.markdown("""
-⚠️ Note: CoinGecko's free API limits historical data to 1 year.
-For longer backtests, an API key would be required.
+💾 Historical Bitcoin data is stored locally for faster and more extensive backtesting.
+If data for your selected date range isn't available locally, it will be fetched from CoinGecko.
 """)
 
-# Date range selection
+# Date range selection 
 today = datetime.date.today()
-default_start_date = today - timedelta(days=364)  # 1 year ago by default (CoinGecko API limits free tier to 1 year)
+ten_years_ago = today.replace(year=today.year - 10)
+default_start_date = today - timedelta(days=365)  # 1 year ago by default
 
 start_date = st.sidebar.date_input(
     "Start Date",
     value=default_start_date,
-    min_value=today - timedelta(days=364),  # CoinGecko API 1-year limit
+    min_value=ten_years_ago,  # Up to 10 years ago
     max_value=today - timedelta(days=30)  # At least 30 days of data
 )
 
@@ -198,14 +199,14 @@ if run_button:
                 
                 # Run baseline DCA strategy
                 with st.spinner("Running DCA strategy..."):
-                    dca_result = dca_strategy(df.copy(), weekly_investment)
+                    dca_result = dca_strategy(df.clone(), weekly_investment)
                     strategy_results["DCA (Baseline)"] = dca_result
                 
                 # Run Value Averaging if selected
                 if use_value_avg:
                     with st.spinner("Running Value Averaging strategy..."):
                         va_result = value_averaging_strategy(
-                            df.copy(), 
+                            df.clone(), 
                             weekly_investment, 
                             strategy_params["value_avg"]["target_growth_rate"]
                         )
@@ -215,7 +216,7 @@ if run_button:
                 if use_maco:
                     with st.spinner("Running Moving Average Crossover strategy..."):
                         maco_result = maco_strategy(
-                            df.copy(), 
+                            df.clone(), 
                             weekly_investment,
                             strategy_params["maco"]["short_window"],
                             strategy_params["maco"]["long_window"]
@@ -226,7 +227,7 @@ if run_button:
                 if use_rsi:
                     with st.spinner("Running RSI-based strategy..."):
                         rsi_result = rsi_strategy(
-                            df.copy(), 
+                            df.clone(), 
                             weekly_investment,
                             strategy_params["rsi"]["rsi_period"],
                             strategy_params["rsi"]["oversold_threshold"],
@@ -238,7 +239,7 @@ if run_button:
                 if use_volatility:
                     with st.spinner("Running Volatility-based strategy..."):
                         vol_result = volatility_strategy(
-                            df.copy(), 
+                            df.clone(), 
                             weekly_investment,
                             strategy_params["volatility"]["vol_window"],
                             strategy_params["volatility"]["vol_threshold"]
@@ -249,7 +250,7 @@ if run_button:
                 if use_lump_sum:
                     with st.spinner("Running Periodic Lump Sum strategy..."):
                         ls_result = lump_sum_strategy(
-                            df.copy(), 
+                            df.clone(), 
                             weekly_investment,
                             strategy_params["lump_sum"]["period_months"],
                             strategy_params["lump_sum"]["multiplier"]
@@ -260,7 +261,7 @@ if run_button:
                 if use_btd:
                     with st.spinner("Running Buy The Dip strategy..."):
                         btd_result = btd_strategy(
-                            df.copy(), 
+                            df.clone(), 
                             weekly_investment,
                             strategy_params["btd"]["dip_threshold"],
                             strategy_params["btd"]["lookback_period"],
