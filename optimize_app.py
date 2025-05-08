@@ -130,7 +130,10 @@ def run_optimizer_page():
                         elif strategy == "volatility":
                             result = optimize_volatility_strategy(start_date_str, end_date_str, currency, n_calls)
                         
-                        display_optimization_results(result, single_strategy=True)
+                        if result is not None:
+                            display_optimization_results(result, single_strategy=True)
+                        else:
+                            st.error("Optimization failed. Please try again with different parameters.")
                     else:
                         # Optimize subset of strategies or all
                         all_results = {}
@@ -146,17 +149,23 @@ def run_optimizer_page():
                             elif strategy == "volatility":
                                 result = optimize_volatility_strategy(start_date_str, end_date_str, currency, n_calls)
                             
-                            all_results[strategy] = result
+                            # Only add result if not None
+                            if result is not None:
+                                all_results[strategy] = result
                         
-                        # Find best strategy among the optimized ones
-                        best_strategy_name = max(
-                            all_results.items(),
-                            key=lambda x: x[1]["performance"]["final_btc"]
-                        )[0]
-                        
-                        best_strategy = all_results[best_strategy_name]
-                        
-                        display_optimization_results(all_results, best_strategy_name, single_strategy=False)
+                        # Check if we have any valid results
+                        if all_results:
+                            # Find best strategy among the optimized ones
+                            best_strategy_name = max(
+                                all_results.items(),
+                                key=lambda x: x[1]["performance"]["final_btc"]
+                            )[0]
+                            
+                            best_strategy = all_results[best_strategy_name]
+                            
+                            display_optimization_results(all_results, best_strategy_name, single_strategy=False)
+                        else:
+                            st.error("No valid optimization results were found. Please try different parameters or strategies.")
             except Exception as e:
                 st.error(f"An error occurred during optimization: {str(e)}")
     else:

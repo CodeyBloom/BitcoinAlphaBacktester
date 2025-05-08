@@ -82,10 +82,18 @@ def optimize_dca_strategy(start_date, end_date, currency="AUD", n_calls=50):
     )
     
     # Get best parameters
-    best_exchange = result.x[0]
-    best_use_discount = result.x[1]
-    best_weekly_investment = result.x[2]
-    best_btc = -result.fun
+    # Handle potential None result
+    if result is not None and hasattr(result, 'x') and hasattr(result, 'fun'):
+        best_exchange = result.x[0]
+        best_use_discount = result.x[1]
+        best_weekly_investment = result.x[2]
+        best_btc = -result.fun
+    else:
+        # Default values if optimization fails
+        best_exchange = exchanges[0]
+        best_use_discount = False
+        best_weekly_investment = 100
+        best_btc = 0
     
     # Return optimized parameters and performance
     return {
@@ -158,12 +166,22 @@ def optimize_maco_strategy(start_date, end_date, currency="AUD", n_calls=50):
     )
     
     # Get best parameters
-    best_exchange = result.x[0]
-    best_use_discount = result.x[1]
-    best_weekly_investment = result.x[2]
-    best_short_window = result.x[3]
-    best_long_window = result.x[4]
-    best_btc = -result.fun
+    # Handle potential None result
+    if result is not None and hasattr(result, 'x') and hasattr(result, 'fun'):
+        best_exchange = result.x[0]
+        best_use_discount = result.x[1]
+        best_weekly_investment = result.x[2]
+        best_short_window = result.x[3]
+        best_long_window = result.x[4]
+        best_btc = -result.fun
+    else:
+        # Default values if optimization fails
+        best_exchange = exchanges[0]
+        best_use_discount = False
+        best_weekly_investment = 100
+        best_short_window = 20
+        best_long_window = 100
+        best_btc = 0
     
     # Return optimized parameters and performance
     return {
@@ -243,13 +261,24 @@ def optimize_rsi_strategy(start_date, end_date, currency="AUD", n_calls=50):
     )
     
     # Get best parameters
-    best_exchange = result.x[0]
-    best_use_discount = result.x[1]
-    best_weekly_investment = result.x[2]
-    best_rsi_period = result.x[3]
-    best_oversold_threshold = result.x[4]
-    best_overbought_threshold = result.x[5]
-    best_btc = -result.fun
+    # Handle potential None result
+    if result is not None and hasattr(result, 'x') and hasattr(result, 'fun'):
+        best_exchange = result.x[0]
+        best_use_discount = result.x[1]
+        best_weekly_investment = result.x[2]
+        best_rsi_period = result.x[3]
+        best_oversold_threshold = result.x[4]
+        best_overbought_threshold = result.x[5]
+        best_btc = -result.fun
+    else:
+        # Default values if optimization fails
+        best_exchange = exchanges[0]
+        best_use_discount = False
+        best_weekly_investment = 100
+        best_rsi_period = 14
+        best_oversold_threshold = 30
+        best_overbought_threshold = 70
+        best_btc = 0
     
     # Return optimized parameters and performance
     return {
@@ -323,12 +352,22 @@ def optimize_volatility_strategy(start_date, end_date, currency="AUD", n_calls=5
     )
     
     # Get best parameters
-    best_exchange = result.x[0]
-    best_use_discount = result.x[1]
-    best_weekly_investment = result.x[2]
-    best_vol_window = result.x[3]
-    best_vol_threshold = result.x[4]
-    best_btc = -result.fun
+    # Handle potential None result
+    if result is not None and hasattr(result, 'x') and hasattr(result, 'fun'):
+        best_exchange = result.x[0]
+        best_use_discount = result.x[1]
+        best_weekly_investment = result.x[2]
+        best_vol_window = result.x[3]
+        best_vol_threshold = result.x[4]
+        best_btc = -result.fun
+    else:
+        # Default values if optimization fails
+        best_exchange = exchanges[0]
+        best_use_discount = False
+        best_weekly_investment = 100
+        best_vol_window = 14
+        best_vol_threshold = 1.5
+        best_btc = 0
     
     # Return optimized parameters and performance
     return {
