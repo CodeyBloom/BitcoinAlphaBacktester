@@ -75,6 +75,7 @@ st.sidebar.header("Strategies to Compare")
 use_dca = st.sidebar.checkbox("Dollar Cost Averaging (Baseline)", value=True, disabled=True)
 
 # Additional strategies
+# Select which strategies to compare
 use_value_avg = st.sidebar.checkbox("Value Averaging", value=False)
 use_maco = st.sidebar.checkbox("Moving Average Crossover", value=False)
 use_rsi = st.sidebar.checkbox("RSI-Based Strategy", value=False)
@@ -137,12 +138,6 @@ with st.expander("Strategy Descriptions"):
     
     ### Volatility-Based Strategy
     Increases investment during periods of high volatility to capture potential upswings.
-    
-    ### Periodic Lump Sum
-    Instead of weekly investments, makes larger investments at longer intervals.
-    
-    ### Buy The Dip
-    Waits for price drops of a certain percentage before buying, aiming to purchase at lower prices.
     """)
 
 with st.expander("Performance Metrics Explained"):
@@ -228,28 +223,7 @@ if run_button:
                         )
                         strategy_results["Volatility"] = vol_result
                 
-                # Run Lump Sum if selected
-                if use_lump_sum:
-                    with st.spinner("Running Periodic Lump Sum strategy..."):
-                        ls_result = lump_sum_strategy(
-                            df.clone(), 
-                            weekly_investment,
-                            strategy_params["lump_sum"]["period_months"],
-                            strategy_params["lump_sum"]["multiplier"]
-                        )
-                        strategy_results["Lump Sum"] = ls_result
-                
-                # Run Buy the Dip if selected
-                if use_btd:
-                    with st.spinner("Running Buy The Dip strategy..."):
-                        btd_result = btd_strategy(
-                            df.clone(), 
-                            weekly_investment,
-                            strategy_params["btd"]["dip_threshold"],
-                            strategy_params["btd"]["lookback_period"],
-                            strategy_params["btd"]["multiplier"]
-                        )
-                        strategy_results["Buy The Dip"] = btd_result
+                # The Lump Sum and Buy the Dip strategies have been removed in the refactored version
                 
                 # Calculate performance metrics
                 performance_metrics = {}
