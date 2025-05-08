@@ -24,223 +24,208 @@ def run_optimizer_page():
     
     st.title("Bitcoin Strategy Optimizer")
     st.markdown("""
-    This tool uses Bayesian Optimization to find the best parameters for each strategy,
-    including the optimal exchange to use based on fee structures.
+    This tool shows the optimal parameters for each investment strategy,
+    including the best exchange to use based on fee structures.
     
-    **Note:** Optimizations are saved to disk as Arrow files to avoid re-running them each time.
+    **Note:** The optimization results are pre-calculated using Bayesian Optimization.
     """)
     
-    # Sidebar for result parameters
-    st.sidebar.header("Select Parameters")
+    # Find all available optimization files
+    optimization_files = list(Path(OPTIMIZATION_DIR).glob("*.arrow")) + list(Path(OPTIMIZATION_DIR).glob("*.ipc"))
     
-    # Date range selection 
-    today = datetime.date.today()
-    ten_years_ago = today.replace(year=today.year - 10)
-    default_start_date = today - timedelta(days=365)  # 1 year ago by default
-    
-    start_date = st.sidebar.date_input(
-        "Start Date",
-        value=default_start_date,
-        min_value=ten_years_ago,  # Up to 10 years ago
-        max_value=today - timedelta(days=30)  # At least 30 days of data
-    )
-    
-    end_date = st.sidebar.date_input(
-        "End Date",
-        value=today,
-        min_value=start_date + timedelta(days=30),
-        max_value=today
-    )
-    
-    # Currency selection
-    currency = st.sidebar.selectbox("Currency", ["AUD", "USD"])
-    
-    # Strategy selection
-    st.sidebar.header("Strategies to View")
-    optimize_dca = st.sidebar.checkbox("Dollar Cost Averaging", value=True)
-    optimize_maco = st.sidebar.checkbox("Moving Average Crossover", value=True)
-    optimize_rsi = st.sidebar.checkbox("RSI-Based Strategy", value=True)
-    optimize_volatility = st.sidebar.checkbox("Volatility-Based Strategy", value=True)
-    
-    # Button to load optimization results
-    load_button = st.sidebar.button("Load Optimization Results", type="primary")
-    
-    # Display explanatory text
-    with st.expander("How Bayesian Optimization Works"):
+    if not optimization_files:
+        st.warning("No optimization results are available.")
+        
         st.markdown("""
-        ### Bayesian Optimization
+        ## Optimization Results Show:
         
-        Bayesian optimization is a machine learning technique that efficiently searches for the
-        optimal parameters by:
+        1. **The best exchange** for each strategy based on fee structures
+        2. **Optimal parameters** for each trading strategy
+        3. **Ideal weekly investment** amount for maximum BTC accumulation
+        4. **Comparative performance** showing which strategy works best
         
-        1. Building a probabilistic model of the objective function
-        2. Using this model to select the most promising parameters to evaluate next
-        3. Updating the model with new results to improve future selections
-        
-        This approach is much more efficient than grid search or random search, especially
-        for computationally expensive evaluations like backtesting strategies over long periods.
-        
-        The optimizer will search for parameters that maximize Bitcoin accumulation, considering:
-        - Exchange fees and loyalty discounts
-        - Strategy-specific parameters
-        - Weekly investment amounts
+        The optimization results are based on historical Bitcoin price data simulation
+        of strategy performance under different parameter combinations.
         """)
+        return
     
-    # Format dates for file paths and function calls
-    start_date_str = start_date.strftime("%d-%m-%Y")
-    end_date_str = end_date.strftime("%d-%m-%Y")
-    
-    selected_strategies = []
-    if optimize_dca:
-        selected_strategies.append("dca")
-    if optimize_maco:
-        selected_strategies.append("maco")
-    if optimize_rsi:
-        selected_strategies.append("rsi")
-    if optimize_volatility:
-        selected_strategies.append("volatility")
-    
-    # Function to get file path for a strategy
-    def get_optimization_file_path(strategy):
-        filename = f"{strategy}_{start_date_str.replace('-', '')}_{end_date_str.replace('-', '')}_{currency}.arrow"
-        return os.path.join(OPTIMIZATION_DIR, filename)
-    
-    # Function to check if optimization results exist for a strategy
-    def optimization_exists(strategy):
-        file_path = get_optimization_file_path(strategy)
-        return os.path.exists(file_path)
-    
-    # Function to load optimization results for a strategy
-    def load_optimization_results(strategy):
-        file_path = get_optimization_file_path(strategy)
-        if os.path.exists(file_path):
-            try:
-                # Load Arrow file using Polars
-                df = pl.read_ipc(file_path)
+    # Extract available dates, currencies, and strategies from file names
+    available_data = {}
+    for file_path in optimization_files:
+        file_name = file_path.name
+        parts = file_name.split('_')
+        
+        if len(parts) >= 4:
+            strategy = parts[0]
+            start_date_str = parts[1]
+            end_date_str = parts[2].split('.')[0] if '.' in parts[2] else parts[2]
+            currency = parts[3].split('.')[0] if '.' in parts[3] else parts[3]
+            
+            # Format dates for display
+            if len(start_date_str) == 8:  # DDMMYYYY format
+                start_date_display = f"{start_date_str[:2]}-{start_date_str[2:4]}-{start_date_str[4:]}"
+            else:
+                start_date_display = start_date_str
                 
-                # Convert to dictionary format expected by display function
-                row = df.row(0, named=True)  # Get first row as dict
-                
-                # Extract strategy name
-                strategy_name = row.get("strategy", strategy)
-                
-                # Extract parameters
-                best_params = {}
-                for key, value in row.items():
-                    if key.startswith("param_"):
-                        param_name = key[6:]  # Remove "param_" prefix
-                        best_params[param_name] = value
-                
-                # Extract performance metrics
-                performance = {}
-                for key, value in row.items():
-                    if key.startswith("performance_"):
-                        metric_name = key[12:]  # Remove "performance_" prefix
-                        performance[metric_name] = value
-                
-                # Create result dictionary in expected format
-                result = {
-                    "strategy": strategy_name,
-                    "best_params": best_params,
-                    "performance": performance
+            if len(end_date_str) == 8:  # DDMMYYYY format
+                end_date_display = f"{end_date_str[:2]}-{end_date_str[2:4]}-{end_date_str[4:]}"
+            else:
+                end_date_display = end_date_str
+            
+            key = (start_date_str, end_date_str, currency)
+            if key not in available_data:
+                available_data[key] = {
+                    "start_date_display": start_date_display,
+                    "end_date_display": end_date_display,
+                    "currency": currency,
+                    "strategies": []
                 }
-                
-                return result
-            except Exception as e:
-                st.error(f"Error loading results for {strategy}: {str(e)}")
-                return None
-        return None
-
-    # Handle load button click - load existing results
-    if load_button:
-        if not selected_strategies:
-            st.error("Please select at least one strategy to load results for.")
-        else:
-            try:
-                all_results = {}
-                missing_results = []
-                
-                # Try to load results for each selected strategy
-                for strategy in selected_strategies:
-                    if optimization_exists(strategy):
-                        result = load_optimization_results(strategy)
-                        if result is not None:
-                            all_results[strategy] = result
-                            st.success(f"Loaded optimization results for {strategy.upper()}")
-                    else:
-                        missing_results.append(strategy)
-                
-                # Warn about missing results
-                if missing_results:
-                    missing_str = ", ".join([s.upper() for s in missing_results])
-                    st.warning(f"No saved results found for: {missing_str}. Pre-calculated optimization results may not be available for these strategies.")
-                
-                # Display results
-                if len(all_results) == 1:
-                    # Single strategy optimization
-                    strategy = list(all_results.keys())[0]
-                    display_optimization_results(all_results[strategy], single_strategy=True)
-                elif len(all_results) > 1:
-                    # Multi-strategy optimization
-                    # Find best strategy among optimized ones
-                    best_strategy_name = max(
-                        all_results.items(),
-                        key=lambda x: x[1]["performance"]["final_btc"]
-                    )[0]
-                    
-                    display_optimization_results(all_results, best_strategy_name, single_strategy=False)
-                else:
-                    st.error("No optimization results were loaded. Pre-calculated optimization results may not be available for the selected strategies and date range.")
             
-            except Exception as e:
-                st.error(f"An error occurred while loading results: {str(e)}")
-    else:
-        # Show existing optimization files
-        optimization_files = list(Path(OPTIMIZATION_DIR).glob("*.arrow")) + list(Path(OPTIMIZATION_DIR).glob("*.ipc"))
-        if optimization_files:
-            st.info("Saved optimization results exist. Click 'Load Optimization Results' to view them.")
-            
-            # Show a table of available optimization files
-            file_data = []
-            for file_path in optimization_files:
-                file_name = file_path.name
-                parts = file_name.split('_')
-                if len(parts) >= 4:
-                    strategy = parts[0].upper()
-                    # Extract dates from filename
-                    start = parts[1]
-                    end = parts[2].split('.')[0] if '.' in parts[2] else parts[2]
-                    # Format dates for display
-                    if len(start) == 8:  # DDMMYYYY format
-                        start = f"{start[:2]}-{start[2:4]}-{start[4:]}"
-                    if len(end) == 8:  # DDMMYYYY format
-                        end = f"{end[:2]}-{end[2:4]}-{end[4:]}"
-                    
-                    file_data.append({
-                        "Strategy": strategy,
-                        "Start Date": start,
-                        "End Date": end,
-                        "File": file_name
-                    })
-            
-            if file_data:
-                st.subheader("Available Optimization Results")
-                st.dataframe(pd.DataFrame(file_data))
-        else:
-            # Display instructions when page first loads
-            st.info("👈 Select your optimization parameters and click 'Load Optimization Results' to view saved optimization results.")
-            
+            available_data[key]["strategies"].append(strategy)
+    
+    # Sidebar for selecting available data
+    st.sidebar.header("Available Optimization Results")
+    
+    # Group the options by date range and currency
+    date_options = []
+    for key, data in available_data.items():
+        date_option = f"{data['start_date_display']} to {data['end_date_display']} ({data['currency']})"
+        date_options.append((date_option, key))
+    
+    # Sort by most recent first
+    date_options.sort(key=lambda x: x[1][1], reverse=True)
+    
+    selected_option = st.sidebar.selectbox(
+        "Select Date Range & Currency",
+        options=[option[0] for option in date_options],
+        index=0
+    )
+    
+    # Find the selected key
+    selected_key = None
+    for option in date_options:
+        if option[0] == selected_option:
+            selected_key = option[1]
+            break
+    
+    if selected_key:
+        start_date_str, end_date_str, currency = selected_key
+        available_strategies = available_data[selected_key]["strategies"]
+        
+        # Display the strategies available for this date range
+        st.sidebar.header("Available Strategies")
+        
+        # Create checkboxes for each available strategy
+        strategy_selections = {}
+        for strategy in ["dca", "maco", "rsi", "volatility"]:
+            if strategy in available_strategies:
+                strategy_selections[strategy] = st.sidebar.checkbox(
+                    strategy.upper() if strategy != "maco" else "MACO", 
+                    value=True
+                )
+        
+        # Get selected strategies
+        selected_strategies = [s for s, selected in strategy_selections.items() if selected]
+        
+        # Display explanatory text
+        with st.expander("How Strategies Were Optimized"):
             st.markdown("""
-            ## Optimization Results Show:
+            ### Bayesian Optimization
             
-            1. **The best exchange** for each strategy based on fee structures
-            2. **Optimal parameters** for each trading strategy
-            3. **Ideal weekly investment** amount for maximum BTC accumulation
-            4. **Comparative performance** showing which strategy works best
+            The parameters for each strategy were optimized using Bayesian optimization, which:
             
-            The optimization results are based on historical Bitcoin price data simulation
-            of strategy performance under different parameter combinations.
+            1. Builds a probabilistic model of the objective function
+            2. Efficiently searches the parameter space for optimal results
+            3. Maximizes Bitcoin accumulation while considering exchange fees
+            
+            The optimizer found parameters that maximize Bitcoin accumulation, considering:
+            - Exchange fees and loyalty discounts
+            - Strategy-specific parameters
+            - Weekly investment amounts
             """)
+        
+        # Function to get file path for a strategy
+        def get_optimization_file_path(strategy):
+            filename = f"{strategy}_{start_date_str}_{end_date_str}_{currency}.arrow"
+            return os.path.join(OPTIMIZATION_DIR, filename)
+        
+        # Function to check if optimization results exist for a strategy
+        def optimization_exists(strategy):
+            file_path = get_optimization_file_path(strategy)
+            return os.path.exists(file_path)
+        
+        # Function to load optimization results for a strategy
+        def load_optimization_results(strategy):
+            file_path = get_optimization_file_path(strategy)
+            if os.path.exists(file_path):
+                try:
+                    # Load Arrow file using Polars
+                    df = pl.read_ipc(file_path)
+                    
+                    # Convert to dictionary format expected by display function
+                    row = df.row(0, named=True)  # Get first row as dict
+                    
+                    # Extract strategy name
+                    strategy_name = row.get("strategy", strategy)
+                    
+                    # Extract parameters
+                    best_params = {}
+                    for key, value in row.items():
+                        if key.startswith("param_"):
+                            param_name = key[6:]  # Remove "param_" prefix
+                            best_params[param_name] = value
+                    
+                    # Extract performance metrics
+                    performance = {}
+                    for key, value in row.items():
+                        if key.startswith("performance_"):
+                            metric_name = key[12:]  # Remove "performance_" prefix
+                            performance[metric_name] = value
+                    
+                    # Create result dictionary in expected format
+                    result = {
+                        "strategy": strategy_name,
+                        "best_params": best_params,
+                        "performance": performance
+                    }
+                    
+                    return result
+                except Exception as e:
+                    st.error(f"Error loading results for {strategy}: {str(e)}")
+                    return None
+            return None
+        
+        # Automatically load results for selected strategies
+        if selected_strategies:
+            all_results = {}
+            
+            # Load results for each selected strategy
+            for strategy in selected_strategies:
+                if optimization_exists(strategy):
+                    result = load_optimization_results(strategy)
+                    if result is not None:
+                        all_results[strategy] = result
+            
+            # Display results
+            if len(all_results) == 1:
+                # Single strategy optimization
+                strategy = list(all_results.keys())[0]
+                display_optimization_results(all_results[strategy], single_strategy=True)
+            elif len(all_results) > 1:
+                # Multi-strategy optimization
+                # Find best strategy among optimized ones
+                best_strategy_name = max(
+                    all_results.items(),
+                    key=lambda x: x[1]["performance"]["final_btc"]
+                )[0]
+                
+                display_optimization_results(all_results, best_strategy_name, single_strategy=False)
+            else:
+                st.error("No optimization results could be loaded.")
+        else:
+            st.warning("Please select at least one strategy to view results.")
+    else:
+        st.error("Error: Could not determine selected date range.")
 
 
 def display_optimization_results(results, best_strategy_name=None, single_strategy=True):
