@@ -239,6 +239,14 @@ def display_optimization_results(results, best_strategy_name=None, single_strate
         best_params = results["best_params"]
         best_performance = results["performance"]
         
+        # Calculate total investment
+        weekly_investment = best_params.get("weekly_investment", 0)
+        weeks = 52  # Assuming one year of investment
+        total_investment = weekly_investment * weeks
+        
+        # Calculate efficiency (BTC per AUD spent)
+        btc_per_aud = best_performance["final_btc"] / total_investment if total_investment > 0 else 0
+        
         st.subheader(f"{strategy_name} Strategy Optimization")
         
         # Create two columns
@@ -262,8 +270,18 @@ def display_optimization_results(results, best_strategy_name=None, single_strate
         with col2:
             st.markdown("### Performance")
             st.metric(
+                "Efficiency (BTC per AUD)",
+                f"{btc_per_aud:.8f} BTC/AUD"
+            )
+            
+            st.metric(
                 "Final BTC Holdings",
                 f"{best_performance['final_btc']:.8f} BTC"
+            )
+            
+            st.metric(
+                "Total Investment",
+                f"{total_investment:.2f} AUD"
             )
             
             # If we have additional metrics, display them
@@ -286,41 +304,72 @@ def display_optimization_results(results, best_strategy_name=None, single_strate
         comparison_data = []
         
         for strategy_name, result in results.items():
+            weekly_investment = result["best_params"]["weekly_investment"]
+            weeks = 52  # Assuming one year of investment
+            total_investment = weekly_investment * weeks
+            btc_per_aud = result["performance"]["final_btc"] / total_investment if total_investment > 0 else 0
+            
             comparison_data.append({
                 "Strategy": strategy_name.upper(),
                 "Exchange": result["best_params"]["exchange_id"],
-                "Weekly Investment": f"{result['best_params']['weekly_investment']:.2f}",
+                "Weekly Investment": f"{weekly_investment:.2f}",
+                "Total Investment": f"{total_investment:.2f}",
                 "BTC Accumulated": f"{result['performance']['final_btc']:.8f}",
+                "Efficiency (BTC/AUD)": f"{btc_per_aud:.8f}",
                 "Use Discount": "Yes" if result["best_params"]["use_discount"] else "No"
             })
         
         # Convert to DataFrame for display
         comparison_df = pd.DataFrame(comparison_data)
+        
+        # Sort by efficiency (BTC per AUD) descending
+        comparison_df["Efficiency_Sort"] = [float(row["Efficiency (BTC/AUD)"]) for _, row in comparison_df.iterrows()]
+        comparison_df = comparison_df.sort_values("Efficiency_Sort", ascending=False)
+        comparison_df = comparison_df.drop("Efficiency_Sort", axis=1)
+        
         st.dataframe(comparison_df, use_container_width=True)
         
-        # Highlight the best strategy
-        if best_strategy_name is not None:
-            strategy_display = best_strategy_name.upper()
-        else:
-            strategy_display = "UNKNOWN"
-        st.success(f"The best performing strategy is **{strategy_display}** with these parameters:")
+        # Find the most efficient strategy
+        most_efficient_strategy = max(
+            results.items(),
+            key=lambda x: x[1]["performance"]["final_btc"] / (x[1]["best_params"]["weekly_investment"] * 52)
+        )[0]
         
-        best_result = results[best_strategy_name]
-        best_params = best_result["best_params"]
+        # Highlight the most efficient strategy
+        most_efficient_display = most_efficient_strategy.upper()
+        st.success(f"The most efficient strategy is **{most_efficient_display}** with these parameters:")
         
-        # Show best strategy details
-        for param, value in best_params.items():
-            # Format nicely
-            if param == "exchange_id":
-                st.info(f"**Exchange:** {value}")
-            elif param == "use_discount":
-                st.info(f"**Use Loyalty Discount:** {'Yes' if value else 'No'}")
-            elif param == "weekly_investment":
-                st.info(f"**Weekly Investment:** {value:.2f}")
-            else:
-                # Strategy-specific parameters
-                formatted_param = param.replace("_", " ").title()
-                st.info(f"**{formatted_param}:** {value}")
+        efficient_result = results[most_efficient_strategy]
+        efficient_params = efficient_result["best_params"]
+        
+        # Calculate efficiency metrics
+        weekly_investment = efficient_params.get("weekly_investment", 0)
+        weeks = 52  # Assuming one year of investment
+        total_investment = weekly_investment * weeks
+        btc_per_aud = efficient_result["performance"]["final_btc"] / total_investment if total_investment > 0 else 0
+        
+        # Create two columns for the efficient strategy details
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            # Show most efficient strategy parameters
+            for param, value in efficient_params.items():
+                # Format nicely
+                if param == "exchange_id":
+                    st.info(f"**Exchange:** {value}")
+                elif param == "use_discount":
+                    st.info(f"**Use Loyalty Discount:** {'Yes' if value else 'No'}")
+                elif param == "weekly_investment":
+                    st.info(f"**Weekly Investment:** {value:.2f}")
+                else:
+                    # Strategy-specific parameters
+                    formatted_param = param.replace("_", " ").title()
+                    st.info(f"**{formatted_param}:** {value}")
+                    
+        with col2:
+            st.info(f"**Efficiency:** {btc_per_aud:.8f} BTC/AUD")
+            st.info(f"**Final BTC:** {efficient_result['performance']['final_btc']:.8f} BTC")
+            st.info(f"**Total Investment:** {total_investment:.2f} AUD")
 
 
 if __name__ == "__main__":
