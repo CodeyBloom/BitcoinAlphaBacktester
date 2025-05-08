@@ -1,9 +1,250 @@
+"""
+Domain module for Bitcoin investment strategy calculations.
+
+This module follows functional programming principles from "Grokking Simplicity":
+- Functions are categorized as calculations (pure functions) or actions (with side effects)
+- Data is treated as immutable
+- Complex operations are composed of smaller, reusable functions
+"""
+
 import polars as pl
 import numpy as np
+from datetime import datetime
 
-def dca_strategy(df, weekly_investment):
+# ===== CALCULATIONS (PURE FUNCTIONS) =====
+
+def calculate_investment_for_dca(is_sunday, weekly_investment):
     """
-    Implement Dollar Cost Averaging strategy (buying a fixed amount on Sundays)
+    Pure function to calculate investment amount for DCA strategy.
+    
+    Args:
+        is_sunday (bool): Whether the current day is Sunday
+        weekly_investment (float): Amount to invest weekly
+        
+    Returns:
+        float: Amount to invest on this day
+    """
+    return weekly_investment if is_sunday else 0.0
+
+def calculate_btc_bought(investment, price):
+    """
+    Pure function to calculate BTC amount bought with a given investment.
+    
+    Args:
+        investment (float): Amount invested
+        price (float): Bitcoin price
+        
+    Returns:
+        float: Amount of BTC bought
+    """
+    return investment / price if price > 0 else 0.0
+
+def calculate_moving_average(prices, window):
+    """
+    Pure function to calculate a moving average over a window of prices.
+    
+    Args:
+        prices (np.array): Array of price values
+        window (int): Window size for the moving average
+    
+    Returns:
+        np.array: Array with moving averages (same length as prices)
+    """
+    result = np.zeros_like(prices)
+    for i in range(len(prices)):
+        if i >= window:
+            result[i] = np.mean(prices[i-window:i])
+    return result
+
+def calculate_rsi(prices, period=14):
+    """
+    Pure function to calculate RSI values for a series of prices.
+    
+    Args:
+        prices (np.array): Array of price values
+        period (int): Period for RSI calculation
+    
+    Returns:
+        np.array: Array with RSI values (same length as prices)
+    """
+    # Calculate price changes
+    delta = np.zeros_like(prices)
+    delta[1:] = prices[1:] - prices[:-1]
+    
+    # Create gains and losses arrays
+    gains = np.copy(delta)
+    losses = np.copy(delta)
+    gains[gains < 0] = 0
+    losses[losses > 0] = 0
+    losses = np.abs(losses)
+    
+    # Calculate average gains and losses
+    avg_gains = np.zeros_like(prices)
+    avg_losses = np.zeros_like(prices)
+    
+    # Initialize RSI array
+    rsi = np.zeros_like(prices)
+    
+    # Calculate initial averages
+    for i in range(period, len(prices)):
+        if i == period:
+            avg_gains[i] = np.mean(gains[1:i+1])
+            avg_losses[i] = np.mean(losses[1:i+1])
+        else:
+            avg_gains[i] = (avg_gains[i-1] * (period-1) + gains[i]) / period
+            avg_losses[i] = (avg_losses[i-1] * (period-1) + losses[i]) / period
+        
+        # Calculate RS and RSI
+        if avg_losses[i] != 0:
+            rs = avg_gains[i] / avg_losses[i]
+        else:
+            rs = 100  # Avoid division by zero
+            
+        rsi[i] = 100 - (100 / (1 + rs))
+    
+    return rsi
+
+def calculate_volatility(returns, window):
+    """
+    Pure function to calculate volatility (standard deviation) over a window of returns.
+    
+    Args:
+        returns (np.array): Array of return values
+        window (int): Window size for the volatility calculation
+    
+    Returns:
+        np.array: Array with volatility values (same length as returns)
+    """
+    result = np.zeros_like(returns)
+    for i in range(window, len(returns)):
+        result[i] = np.nanstd(returns[i-window+1:i+1])
+    return result
+
+def calculate_price_drop(prices, lookback_period):
+    """
+    Pure function to calculate price drop percentage from maximum in lookback period.
+    
+    Args:
+        prices (np.array): Array of price values
+        lookback_period (int): Period to look back for maximum price
+    
+    Returns:
+        np.array: Array with price drop percentages (same length as prices)
+    """
+    # Calculate rolling max prices
+    rolling_max = np.zeros_like(prices)
+    for i in range(lookback_period, len(prices)):
+        rolling_max[i] = np.max(prices[i-lookback_period:i+1])
+    
+    # Calculate price drop percentages
+    price_drop = np.zeros_like(prices)
+    for i in range(lookback_period, len(prices)):
+        if rolling_max[i] > 0:
+            price_drop[i] = (rolling_max[i] - prices[i]) / rolling_max[i]
+    
+    return price_drop
+
+def is_dip(price_drop, threshold):
+    """
+    Pure function to determine if a price drop constitutes a dip.
+    
+    Args:
+        price_drop (float): Price drop percentage
+        threshold (float): Threshold to consider a dip
+    
+    Returns:
+        bool: True if the price drop exceeds the threshold
+    """
+    return price_drop >= threshold
+
+def determine_rsi_investment_factor(rsi, oversold_threshold, overbought_threshold):
+    """
+    Pure function to determine investment factor based on RSI.
+    
+    Args:
+        rsi (float): Current RSI value
+        oversold_threshold (float): RSI threshold for oversold condition
+        overbought_threshold (float): RSI threshold for overbought condition
+    
+    Returns:
+        float: Investment factor (multiplier for base investment)
+    """
+    if rsi <= oversold_threshold:
+        # Oversold - invest double
+        return 2.0
+    elif rsi >= overbought_threshold:
+        # Overbought - invest half
+        return 0.5
+    else:
+        # Normal range - linear scale between 0.5 and 2.0
+        range_size = overbought_threshold - oversold_threshold
+        position_in_range = rsi - oversold_threshold
+        normalized_position = position_in_range / range_size
+        return 2.0 - (normalized_position * 1.5)  # Scale from 2.0 down to 0.5
+
+def determine_volatility_investment_factor(volatility, avg_volatility, threshold):
+    """
+    Pure function to determine investment factor based on volatility.
+    
+    Args:
+        volatility (float): Current volatility
+        avg_volatility (float): Average volatility
+        threshold (float): Volatility threshold multiplier
+    
+    Returns:
+        float: Investment factor (multiplier for base investment)
+    """
+    if avg_volatility <= 0:
+        return 1.0
+    
+    vol_ratio = volatility / avg_volatility
+    
+    if vol_ratio >= threshold:
+        # Higher volatility - invest more
+        return min(2.0, vol_ratio / threshold)
+    else:
+        # Lower volatility - invest less
+        return max(0.5, vol_ratio / threshold)
+
+def forward_fill_cumulative_values(dates, values):
+    """
+    Pure function to forward fill cumulative values.
+    
+    Args:
+        dates (np.array): Array of dates
+        values (np.array): Array of values to forward fill
+    
+    Returns:
+        np.array: Array with forward-filled values
+    """
+    result = np.copy(values)
+    last_valid_value = 0.0
+    
+    for i in range(len(values)):
+        if values[i] != 0:
+            last_valid_value = values[i]
+        else:
+            result[i] = last_valid_value
+    
+    return result
+
+def find_sundays(dates):
+    """
+    Pure function to find Sundays in a date array.
+    
+    Args:
+        dates (np.array): Array of datetime values
+    
+    Returns:
+        np.array: Boolean array indicating which dates are Sundays
+    """
+    return np.array([d.weekday() == 6 for d in dates])
+
+# ===== STRATEGY CALCULATIONS =====
+
+def apply_dca_strategy(df, weekly_investment):
+    """
+    Apply Dollar Cost Averaging strategy to price data.
     
     Args:
         df (polars.DataFrame): Price data with 'date', 'price', 'is_sunday' columns
@@ -12,37 +253,42 @@ def dca_strategy(df, weekly_investment):
     Returns:
         polars.DataFrame: DataFrame with strategy results
     """
-    # Create a copy of the dataframe
+    # Create a copy of the dataframe (treating data as immutable)
     df = df.clone()
     
     # Add row index if it doesn't exist
     if "row_index" not in df.columns:
         df = df.with_row_index("row_index")
     
-    # Initialize investment column (invest on Sundays)
-    df = df.with_columns(
-        pl.when(pl.col("is_sunday"))
-        .then(weekly_investment)
-        .otherwise(0.0)
-        .alias("investment")
-    )
+    # Convert to numpy arrays for faster processing
+    is_sunday = df["is_sunday"].to_numpy()
+    prices = df["price"].to_numpy()
+    
+    # Calculate investments (invest on Sundays)
+    investments = np.array([calculate_investment_for_dca(is_sun, weekly_investment) 
+                           for is_sun in is_sunday])
     
     # Calculate BTC bought
-    df = df.with_columns(
-        (pl.col("investment") / pl.col("price")).alias("btc_bought")
-    )
+    btc_bought = np.array([calculate_btc_bought(inv, price) 
+                          for inv, price in zip(investments, prices)])
     
     # Calculate cumulative values
+    cumulative_investment = np.cumsum(investments)
+    cumulative_btc = np.cumsum(btc_bought)
+    
+    # Add calculated columns to the dataframe
     df = df.with_columns([
-        pl.col("investment").cum_sum().alias("cumulative_investment"),
-        pl.col("btc_bought").cum_sum().alias("cumulative_btc")
+        pl.Series(investments).alias("investment"),
+        pl.Series(btc_bought).alias("btc_bought"),
+        pl.Series(cumulative_investment).alias("cumulative_investment"),
+        pl.Series(cumulative_btc).alias("cumulative_btc")
     ])
     
     return df
 
-def value_averaging_strategy(df, weekly_base_investment, target_growth_rate):
+def apply_value_averaging_strategy(df, weekly_base_investment, target_growth_rate):
     """
-    Implement Value Averaging strategy (adjusting investment to achieve target portfolio growth)
+    Apply Value Averaging strategy to price data.
     
     Args:
         df (polars.DataFrame): Price data with 'date', 'price', 'is_sunday' columns
@@ -52,6 +298,7 @@ def value_averaging_strategy(df, weekly_base_investment, target_growth_rate):
     Returns:
         polars.DataFrame: DataFrame with strategy results
     """
+    # Create a copy of the dataframe (treating data as immutable)
     df = df.clone()
     
     # Add row index if it doesn't exist
@@ -93,7 +340,7 @@ def value_averaging_strategy(df, weekly_base_investment, target_growth_rate):
     
     # For the first Sunday, do regular DCA
     sunday_investments[0] = weekly_base_investment
-    sunday_btc_bought[0] = weekly_base_investment / sunday_prices[0]
+    sunday_btc_bought[0] = calculate_btc_bought(weekly_base_investment, sunday_prices[0])
     sunday_cumulative_btc[0] = sunday_btc_bought[0]
     sunday_cumulative_investment[0] = weekly_base_investment
     sunday_portfolio_value[0] = sunday_cumulative_btc[0] * sunday_prices[0]
@@ -131,7 +378,7 @@ def value_averaging_strategy(df, weekly_base_investment, target_growth_rate):
         # If investment is non-zero, adjust holdings
         if investment_needed != 0:
             sunday_investments[i] = investment_needed
-            sunday_btc_bought[i] = investment_needed / sunday_prices[i]
+            sunday_btc_bought[i] = calculate_btc_bought(investment_needed, sunday_prices[i])
             
             # Update cumulative values
             sunday_cumulative_investment[i] += sunday_investments[i]
@@ -220,9 +467,9 @@ def value_averaging_strategy(df, weekly_base_investment, target_growth_rate):
     
     return df
 
-def maco_strategy(df, weekly_investment, short_window=20, long_window=100):
+def apply_maco_strategy(df, weekly_investment, short_window=20, long_window=100):
     """
-    Implement Moving Average Crossover strategy
+    Apply Moving Average Crossover strategy to price data.
     
     Args:
         df (polars.DataFrame): Price data with 'date', 'price', 'is_sunday' columns
@@ -233,26 +480,20 @@ def maco_strategy(df, weekly_investment, short_window=20, long_window=100):
     Returns:
         polars.DataFrame: DataFrame with strategy results
     """
+    # Create a copy of the dataframe (treating data as immutable)
     df = df.clone()
     
     # Add row index if it doesn't exist
     if "row_index" not in df.columns:
         df = df.with_row_index("row_index")
     
-    # Convert price to numpy array for faster calculations
+    # Convert data to numpy arrays for faster processing
     prices = df["price"].to_numpy()
     is_sunday = df["is_sunday"].to_numpy()
     
-    # Calculate moving averages with numpy for performance
-    short_ma = np.zeros_like(prices)
-    long_ma = np.zeros_like(prices)
-    
     # Calculate moving averages
-    for i in range(len(prices)):
-        if i >= short_window:
-            short_ma[i] = np.mean(prices[i-short_window:i])
-        if i >= long_window:
-            long_ma[i] = np.mean(prices[i-long_window:i])
+    short_ma = calculate_moving_average(prices, short_window)
+    long_ma = calculate_moving_average(prices, long_window)
     
     # Calculate signal (1 when short MA > long MA, otherwise 0)
     signal = np.zeros_like(prices)
@@ -283,7 +524,7 @@ def maco_strategy(df, weekly_investment, short_window=20, long_window=100):
             and accumulated_funds > 0 and i >= long_window):
             
             investment[i] = accumulated_funds
-            btc_bought[i] = accumulated_funds / prices[i]
+            btc_bought[i] = calculate_btc_bought(accumulated_funds, prices[i])
             
             # Update cumulative values
             if i > 0:
@@ -304,9 +545,9 @@ def maco_strategy(df, weekly_investment, short_window=20, long_window=100):
     if accumulated_funds > 0:
         i = len(prices) - 1
         investment[i] += accumulated_funds
-        btc_bought[i] += accumulated_funds / prices[i]
+        btc_bought[i] += calculate_btc_bought(accumulated_funds, prices[i])
         cumulative_investment[i] += accumulated_funds
-        cumulative_btc[i] += accumulated_funds / prices[i]
+        cumulative_btc[i] += calculate_btc_bought(accumulated_funds, prices[i])
     
     # Add calculated columns to the dataframe
     df = df.with_columns([
@@ -322,9 +563,9 @@ def maco_strategy(df, weekly_investment, short_window=20, long_window=100):
     
     return df
 
-def rsi_strategy(df, weekly_investment, rsi_period=14, oversold_threshold=30, overbought_threshold=70):
+def apply_rsi_strategy(df, weekly_investment, rsi_period=14, oversold_threshold=30, overbought_threshold=70):
     """
-    Implement RSI-based investment strategy
+    Apply RSI-based investment strategy to price data.
     
     Args:
         df (polars.DataFrame): Price data with 'date', 'price', 'is_sunday' columns
@@ -336,52 +577,19 @@ def rsi_strategy(df, weekly_investment, rsi_period=14, oversold_threshold=30, ov
     Returns:
         polars.DataFrame: DataFrame with strategy results
     """
+    # Create a copy of the dataframe (treating data as immutable)
     df = df.clone()
     
     # Add row index if it doesn't exist
     if "row_index" not in df.columns:
         df = df.with_row_index("row_index")
     
-    # Convert data to numpy for faster calculations
+    # Convert data to numpy arrays for faster processing
     prices = df["price"].to_numpy()
     is_sunday = df["is_sunday"].to_numpy()
     
-    # Calculate RSI in numpy
-    # First calculate price changes
-    delta = np.zeros_like(prices)
-    delta[1:] = prices[1:] - prices[:-1]
-    
-    # Create gains (up) and losses (down) arrays
-    gains = np.copy(delta)
-    losses = np.copy(delta)
-    gains[gains < 0] = 0
-    losses[losses > 0] = 0
-    losses = np.abs(losses)
-    
-    # Calculate average gain and loss over the specified period
-    avg_gains = np.zeros_like(prices)
-    avg_losses = np.zeros_like(prices)
-    
-    # Calculate initial averages
-    for i in range(rsi_period, len(prices)):
-        if i == rsi_period:
-            avg_gains[i] = np.mean(gains[1:i+1])
-            avg_losses[i] = np.mean(losses[1:i+1])
-        else:
-            avg_gains[i] = (avg_gains[i-1] * (rsi_period-1) + gains[i]) / rsi_period
-            avg_losses[i] = (avg_losses[i-1] * (rsi_period-1) + losses[i]) / rsi_period
-    
-    # Calculate RS and RSI
-    rs = np.zeros_like(prices)
-    rsi = np.zeros_like(prices)
-    
-    for i in range(rsi_period, len(prices)):
-        if avg_losses[i] != 0:
-            rs[i] = avg_gains[i] / avg_losses[i]
-        else:
-            rs[i] = 100  # Avoid division by zero
-            
-        rsi[i] = 100 - (100 / (1 + rs[i]))
+    # Calculate RSI
+    rsi = calculate_rsi(prices, rsi_period)
     
     # Prepare arrays for storing results
     investment = np.zeros_like(prices)
@@ -389,7 +597,7 @@ def rsi_strategy(df, weekly_investment, rsi_period=14, oversold_threshold=30, ov
     cumulative_investment = np.zeros_like(prices)
     cumulative_btc = np.zeros_like(prices)
     
-    # Strategy: Invest more when RSI is low (oversold), less when RSI is high (overbought)
+    # Weekly investment strategy
     accumulated_funds = 0
     
     for i in range(len(prices)):
@@ -403,23 +611,14 @@ def rsi_strategy(df, weekly_investment, rsi_period=14, oversold_threshold=30, ov
         # Only start investing after RSI is available
         if i >= rsi_period and is_sunday[i]:
             # Determine investment factor based on RSI
-            if current_rsi <= oversold_threshold:
-                # Oversold - invest double
-                investment_factor = 2.0
-            elif current_rsi >= overbought_threshold:
-                # Overbought - invest half
-                investment_factor = 0.5
-            else:
-                # Normal range - linear scale between 0.5 and 2.0
-                range_size = overbought_threshold - oversold_threshold
-                position_in_range = current_rsi - oversold_threshold
-                normalized_position = position_in_range / range_size
-                investment_factor = 2.0 - (normalized_position * 1.5)  # Scale from 2.0 down to 0.5
+            investment_factor = determine_rsi_investment_factor(
+                current_rsi, oversold_threshold, overbought_threshold
+            )
             
             # Calculate investment and BTC bought
             to_invest = min(accumulated_funds, weekly_investment * investment_factor)
             investment[i] = to_invest
-            btc_bought[i] = to_invest / prices[i]
+            btc_bought[i] = calculate_btc_bought(to_invest, prices[i])
             
             # Update accumulated funds
             accumulated_funds -= to_invest
@@ -441,9 +640,9 @@ def rsi_strategy(df, weekly_investment, rsi_period=14, oversold_threshold=30, ov
     if accumulated_funds > 0:
         i = len(prices) - 1
         investment[i] += accumulated_funds
-        btc_bought[i] += accumulated_funds / prices[i]
+        btc_bought[i] += calculate_btc_bought(accumulated_funds, prices[i])
         cumulative_investment[i] += accumulated_funds
-        cumulative_btc[i] += accumulated_funds / prices[i]
+        cumulative_btc[i] += calculate_btc_bought(accumulated_funds, prices[i])
     
     # Add calculated columns to the dataframe
     df = df.with_columns([
@@ -456,9 +655,9 @@ def rsi_strategy(df, weekly_investment, rsi_period=14, oversold_threshold=30, ov
     
     return df
 
-def volatility_strategy(df, weekly_investment, vol_window=14, vol_threshold=1.5):
+def apply_volatility_strategy(df, weekly_investment, vol_window=14, vol_threshold=1.5):
     """
-    Implement volatility-based investment strategy
+    Apply volatility-based investment strategy to price data.
     
     Args:
         df (polars.DataFrame): Price data with 'date', 'price', 'is_sunday' columns
@@ -469,28 +668,23 @@ def volatility_strategy(df, weekly_investment, vol_window=14, vol_threshold=1.5)
     Returns:
         polars.DataFrame: DataFrame with strategy results
     """
+    # Create a copy of the dataframe (treating data as immutable)
     df = df.clone()
     
     # Add row index if it doesn't exist
     if "row_index" not in df.columns:
         df = df.with_row_index("row_index")
     
-    # Convert data to numpy for faster calculations
+    # Convert data to numpy arrays for faster processing
     prices = df["price"].to_numpy()
     returns = df["returns"].to_numpy()
     is_sunday = df["is_sunday"].to_numpy()
     
     # Calculate volatility (standard deviation of returns)
-    volatility = np.zeros_like(prices)
-    
-    for i in range(vol_window, len(returns)):
-        volatility[i] = np.nanstd(returns[i-vol_window+1:i+1])
+    volatility = calculate_volatility(returns, vol_window)
     
     # Calculate average volatility for comparison
-    avg_volatility = np.zeros_like(prices)
-    
-    for i in range(vol_window*5, len(volatility)):
-        avg_volatility[i] = np.nanmean(volatility[i-vol_window*5+1:i+1])
+    avg_volatility = calculate_volatility(volatility, vol_window*5)
     
     # Prepare arrays for storing results
     investment = np.zeros_like(prices)
@@ -498,7 +692,7 @@ def volatility_strategy(df, weekly_investment, vol_window=14, vol_threshold=1.5)
     cumulative_investment = np.zeros_like(prices)
     cumulative_btc = np.zeros_like(prices)
     
-    # Strategy: Invest more during high volatility periods
+    # Weekly investment strategy
     accumulated_funds = 0
     
     for i in range(len(prices)):
@@ -513,20 +707,15 @@ def volatility_strategy(df, weekly_investment, vol_window=14, vol_threshold=1.5)
             avg_vol = avg_volatility[i]
             
             if not np.isnan(current_vol) and not np.isnan(avg_vol) and avg_vol > 0:
-                vol_ratio = current_vol / avg_vol
-                
                 # Determine investment factor based on volatility
-                if vol_ratio >= vol_threshold:
-                    # Higher volatility - invest more
-                    investment_factor = min(2.0, vol_ratio / vol_threshold)
-                else:
-                    # Lower volatility - invest less
-                    investment_factor = max(0.5, vol_ratio / vol_threshold)
+                investment_factor = determine_volatility_investment_factor(
+                    current_vol, avg_vol, vol_threshold
+                )
                 
                 # Calculate investment and BTC bought
                 to_invest = min(accumulated_funds, weekly_investment * investment_factor)
                 investment[i] = to_invest
-                btc_bought[i] = to_invest / prices[i]
+                btc_bought[i] = calculate_btc_bought(to_invest, prices[i])
                 
                 # Update accumulated funds
                 accumulated_funds -= to_invest
@@ -534,7 +723,7 @@ def volatility_strategy(df, weekly_investment, vol_window=14, vol_threshold=1.5)
                 # If volatility data not available, use standard DCA
                 to_invest = min(accumulated_funds, weekly_investment)
                 investment[i] = to_invest
-                btc_bought[i] = to_invest / prices[i]
+                btc_bought[i] = calculate_btc_bought(to_invest, prices[i])
                 accumulated_funds -= to_invest
             
             # Update cumulative values
@@ -554,9 +743,9 @@ def volatility_strategy(df, weekly_investment, vol_window=14, vol_threshold=1.5)
     if accumulated_funds > 0:
         i = len(prices) - 1
         investment[i] += accumulated_funds
-        btc_bought[i] += accumulated_funds / prices[i]
+        btc_bought[i] += calculate_btc_bought(accumulated_funds, prices[i])
         cumulative_investment[i] += accumulated_funds
-        cumulative_btc[i] += accumulated_funds / prices[i]
+        cumulative_btc[i] += calculate_btc_bought(accumulated_funds, prices[i])
     
     # Add calculated columns to the dataframe
     df = df.with_columns([
@@ -567,155 +756,5 @@ def volatility_strategy(df, weekly_investment, vol_window=14, vol_threshold=1.5)
         pl.Series(cumulative_investment).alias("cumulative_investment"),
         pl.Series(cumulative_btc).alias("cumulative_btc")
     ])
-    
-    return df
-
-def lump_sum_strategy(df, weekly_investment, period_months=3, multiplier=12):
-    """
-    Implement periodic lump sum investment strategy
-    
-    Args:
-        df (pandas.DataFrame): Price data with 'date', 'price', 'is_sunday' columns
-        weekly_investment (float): Base weekly investment amount
-        period_months (int): Number of months between investments
-        multiplier (float): Multiplier for lump sum amount
-        
-    Returns:
-        pandas.DataFrame: DataFrame with strategy results
-    """
-    df = df.copy()
-    
-    # Initialize columns
-    df["investment"] = 0.0
-    df["btc_bought"] = 0.0
-    df["cumulative_investment"] = 0.0
-    df["cumulative_btc"] = 0.0
-    
-    # Calculate period in weeks
-    period_weeks = int(period_months * 4.33)  # Approximate weeks per month
-    
-    # Find all Sundays
-    sundays = df[df["is_sunday"]]
-    
-    # Only invest on certain Sundays (every period_weeks)
-    investment_sundays = []
-    week_counter = 0
-    
-    for idx in sundays.index:
-        week_counter += 1
-        if week_counter % period_weeks == 0:
-            investment_sundays.append(idx)
-    
-    # Calculate lump sum amount (equal to weekly_investment * weeks * multiplier)
-    # This is to ensure the total investment is comparable to DCA
-    lump_sum_amount = weekly_investment * period_weeks
-    
-    # Apply investment on selected Sundays
-    accumulated_investment = 0
-    
-    for i, idx in enumerate(sundays.index):
-        # Accumulate weekly equivalent
-        accumulated_investment += weekly_investment
-        
-        # If this is an investment Sunday, invest the lump sum
-        if idx in investment_sundays:
-            to_invest = min(accumulated_investment, lump_sum_amount)
-            df.loc[idx, "investment"] = to_invest
-            df.loc[idx, "btc_bought"] = to_invest / df.loc[idx, "price"]
-            accumulated_investment -= to_invest
-        
-        # Update cumulative values
-        if i > 0:
-            prev_idx = sundays.index[i-1]
-            df.loc[idx, "cumulative_investment"] = df.loc[prev_idx, "cumulative_investment"] + df.loc[idx, "investment"]
-            df.loc[idx, "cumulative_btc"] = df.loc[prev_idx, "cumulative_btc"] + df.loc[idx, "btc_bought"]
-        else:
-            df.loc[idx, "cumulative_investment"] = df.loc[idx, "investment"]
-            df.loc[idx, "cumulative_btc"] = df.loc[idx, "btc_bought"]
-    
-    # Forward fill cumulative values for all days
-    df["cumulative_investment"] = df["cumulative_investment"].replace(0, np.nan).fillna(method="ffill").fillna(0)
-    df["cumulative_btc"] = df["cumulative_btc"].replace(0, np.nan).fillna(method="ffill").fillna(0)
-    
-    # Make sure we invest any remaining funds on the last day to make fair comparison
-    if accumulated_investment > 0:
-        last_idx = df.index[-1]
-        df.loc[last_idx, "investment"] += accumulated_investment
-        df.loc[last_idx, "btc_bought"] += accumulated_investment / df.loc[last_idx, "price"]
-        df.loc[last_idx, "cumulative_investment"] += accumulated_investment
-        df.loc[last_idx, "cumulative_btc"] += accumulated_investment / df.loc[last_idx, "price"]
-    
-    return df
-
-def btd_strategy(df, weekly_investment, dip_threshold=0.1, lookback_period=7, multiplier=2.0):
-    """
-    Implement Buy The Dip investment strategy
-    
-    Args:
-        df (pandas.DataFrame): Price data with 'date', 'price', 'is_sunday' columns
-        weekly_investment (float): Base weekly investment amount
-        dip_threshold (float): Price drop threshold to trigger buying (decimal)
-        lookback_period (int): Period to look back for price drop
-        multiplier (float): Multiplier for investment amount during dips
-        
-    Returns:
-        pandas.DataFrame: DataFrame with strategy results
-    """
-    df = df.copy()
-    
-    # Initialize columns
-    df["investment"] = 0.0
-    df["btc_bought"] = 0.0
-    df["cumulative_investment"] = 0.0
-    df["cumulative_btc"] = 0.0
-    
-    # Calculate rolling max price for lookback period
-    df["rolling_max_price"] = df["price"].rolling(window=lookback_period).max()
-    
-    # Calculate price drop percentage
-    df["price_drop"] = (df["rolling_max_price"] - df["price"]) / df["rolling_max_price"]
-    
-    # Strategy: Accumulate funds and invest more when there's a dip
-    accumulated_funds = 0
-    
-    for i in range(len(df)):
-        # Accumulate weekly investment on Sundays
-        if df.iloc[i]["is_sunday"]:
-            accumulated_funds += weekly_investment
-            
-        # Check if we have enough data and funds
-        if i >= lookback_period and accumulated_funds > 0:
-            price_drop = df.iloc[i]["price_drop"]
-            is_dip = not pl.Series([price_drop]).is_null().item() and price_drop >= dip_threshold
-            
-            # Decide investment amount
-            if is_dip:
-                # Dip detected - invest more
-                to_invest = min(accumulated_funds, weekly_investment * multiplier)
-                df.loc[df.index[i], "investment"] = to_invest
-                df.loc[df.index[i], "btc_bought"] = to_invest / df.iloc[i]["price"]
-                accumulated_funds -= to_invest
-            elif df.iloc[i]["is_sunday"]:
-                # Regular Sunday and no dip - invest regular amount
-                to_invest = weekly_investment
-                df.loc[df.index[i], "investment"] = to_invest
-                df.loc[df.index[i], "btc_bought"] = to_invest / df.iloc[i]["price"]
-                accumulated_funds -= to_invest
-        
-        # Update cumulative values
-        if i > 0:
-            df.loc[df.index[i], "cumulative_investment"] = df.iloc[i-1]["cumulative_investment"] + df.iloc[i]["investment"]
-            df.loc[df.index[i], "cumulative_btc"] = df.iloc[i-1]["cumulative_btc"] + df.iloc[i]["btc_bought"]
-        else:
-            df.loc[df.index[i], "cumulative_investment"] = df.iloc[i]["investment"]
-            df.loc[df.index[i], "cumulative_btc"] = df.iloc[i]["btc_bought"]
-    
-    # Make sure we invest any remaining funds on the last day to make fair comparison
-    if accumulated_funds > 0:
-        last_idx = df.index[-1]
-        df.loc[last_idx, "investment"] += accumulated_funds
-        df.loc[last_idx, "btc_bought"] += accumulated_funds / df.loc[last_idx, "price"]
-        df.loc[last_idx, "cumulative_investment"] += accumulated_funds
-        df.loc[last_idx, "cumulative_btc"] += accumulated_funds / df.loc[last_idx, "price"]
     
     return df
