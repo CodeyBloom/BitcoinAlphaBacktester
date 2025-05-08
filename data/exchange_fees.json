@@ -1,0 +1,71 @@
+{
+    "river": {
+        "name": "River Financial",
+        "url": "https://river.com",
+        "dca_fee": 0.0,
+        "standard_fee": 0.0025,
+        "withdrawal_fee": 0.0,
+        "min_purchase": 25,
+        "supported_currencies": [
+            "USD"
+        ],
+        "last_updated": "2025-05-08T20:26:51.980439"
+    },
+    "binance": {
+        "name": "Binance",
+        "url": "https://binance.com",
+        "maker_fee": 0.001,
+        "taker_fee": 0.001,
+        "bnb_discount": 0.25,
+        "withdrawal_fee_btc": 0.0005,
+        "min_purchase": 10,
+        "supported_currencies": [
+            "USD",
+            "USDT",
+            "BUSD"
+        ],
+        "last_updated": "2025-05-08T20:26:51.980447"
+    },
+    "kraken": {
+        "name": "Kraken",
+        "url": "https://kraken.com",
+        "tier1_fee": 0.0026,
+        "tier2_fee": 0.0024,
+        "tier3_fee": 0.002,
+        "withdrawal_fee_btc": 0.00015,
+        "min_purchase": 10,
+        "supported_currencies": [
+            "USD",
+            "EUR",
+            "GBP",
+            "AUD"
+        ],
+        "last_updated": "2025-05-08T20:26:51.980449"
+    },
+    "coinbase": {
+        "name": "Coinbase",
+        "url": "https://coinbase.com",
+        "standard_fee": 0.006,
+        "coinbase_one_fee": 0.0,
+        "withdrawal_fee": 0.0,
+        "min_purchase": 2,
+        "supported_currencies": [
+            "USD",
+            "EUR",
+            "GBP",
+            "AUD"
+        ],
+        "last_updated": "2025-05-08T20:26:51.980451"
+    },
+    "swan": {
+        "name": "Swan Bitcoin",
+        "url": "https://swanbitcoin.com",
+        "dca_fee": 0.0099,
+        "withdrawal_fee": 0.0,
+        "min_purchase": 10,
+        "supported_currencies": [
+            "USD"
+        ],
+        "last_updated": "2025-05-08T20:26:51.980452"
+    }
+}

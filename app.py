@@ -19,6 +19,8 @@ from visualizations import (
     plot_max_drawdown, 
     plot_sortino_ratio
 )
+# Import fee models for exchange selection
+from fee_models import load_exchange_profiles, get_optimal_exchange_for_strategy
 
 # Set page configuration
 st.set_page_config(
@@ -69,6 +71,45 @@ weekly_investment = st.sidebar.number_input(
     value=100,
     step=10
 )
+
+# Exchange selection for fee comparison
+st.sidebar.header("Exchange Options")
+# Load available exchanges from fee models
+try:
+    exchange_profiles = load_exchange_profiles()
+    available_exchanges = list(exchange_profiles.keys())
+    
+    # Add "None" option to indicate no exchange fees
+    available_exchanges = ["None"] + available_exchanges
+    
+    # Let user select exchange
+    selected_exchange = st.sidebar.selectbox(
+        "Exchange (for fee calculation)",
+        available_exchanges,
+        index=0,
+        help="Select an exchange to account for transaction fees in strategy performance calculations."
+    )
+    
+    # Option for exchange loyalty discounts
+    use_exchange_discount = False
+    if selected_exchange != "None":
+        use_exchange_discount = st.sidebar.checkbox(
+            "Use exchange loyalty discounts",
+            value=False,
+            help="Apply exchange loyalty token discounts (if available)"
+        )
+        
+        # Show optimal exchange recommendation
+        st.sidebar.markdown("##### Optimal Exchange Recommendation")
+        if st.sidebar.button("Find optimal exchange"):
+            optimal_exchange, est_fee = get_optimal_exchange_for_strategy("dca", weekly_investment, investment_currency)
+            st.sidebar.success(f"For DCA strategy with {weekly_investment} {investment_currency}/week:\n\n"
+                            f"**Recommended exchange:** {optimal_exchange}\n\n"
+                            f"**Estimated annual fee:** {est_fee:.2f} {investment_currency}")
+except Exception as e:
+    st.sidebar.warning(f"Could not load exchange profiles: {str(e)}")
+    selected_exchange = "None"
+    use_exchange_discount = False
 
 # Strategy selection
 st.sidebar.header("Strategies to Compare")
@@ -174,9 +215,17 @@ if run_button:
                 # Create a dictionary to store strategy results
                 strategy_results = {}
                 
+                # Get exchange parameters
+                exchange_id = None if selected_exchange == "None" else selected_exchange
+                
+                # Add exchange information to the sidebar if selected
+                if exchange_id:
+                    st.sidebar.info(f"Running strategies with **{exchange_id}** exchange fees" + 
+                                 (" with loyalty discounts" if use_exchange_discount else ""))
+                
                 # Run baseline DCA strategy
                 with st.spinner("Running DCA strategy..."):
-                    dca_result = dca_strategy(df.clone(), weekly_investment)
+                    dca_result = dca_strategy(df.clone(), weekly_investment, exchange_id, use_exchange_discount)
                     strategy_results["DCA (Baseline)"] = dca_result
                 
                 # Run Value Averaging if selected
@@ -222,6 +271,21 @@ if run_button:
                             strategy_params["volatility"]["vol_threshold"]
                         )
                         strategy_results["Volatility"] = vol_result
+                        
+                # Show exchange information if used
+                if exchange_id:
+                    # Add exchange fee info to metrics
+                    try:
+                        from fee_models import get_exchange_fee, TransactionType
+                        fee_percentage = get_exchange_fee(
+                            exchange_id, 
+                            TransactionType.BUY, 
+                            use_discount=use_exchange_discount
+                        )
+                        st.info(f"Exchange **{exchange_id}** applied with {fee_percentage*100:.2f}% fees" +
+                              (" (including loyalty discounts)" if use_exchange_discount else ""))
+                    except Exception as e:
+                        st.warning(f"Could not display exchange fee information: {str(e)}")
                 
                 # The Lump Sum and Buy the Dip strategies have been removed in the refactored version
                 

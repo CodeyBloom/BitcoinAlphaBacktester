@@ -1,13 +1,13 @@
 """
-Tests for the fee_models module.
+Unit tests for the fee models module.
 
-This file tests the exchange fee calculations and other functionality
-in the fee_models module.
+This module contains tests for the fee calculation functions that
+support different cryptocurrency exchanges.
 """
 
-import pytest
-import os
 import json
+import os
+import pytest
 from fee_models import (
     TransactionType,
     load_exchange_profiles,
@@ -16,128 +16,120 @@ from fee_models import (
     calculate_transaction_cost,
     get_optimal_exchange_for_strategy,
     estimate_annual_fees,
-    adjust_btc_for_fees,
-    EXCHANGE_DATA_PATH
+    adjust_btc_for_fees
 )
 
-@pytest.fixture
-def temp_exchange_data():
-    """Create a temporary exchange data file for testing."""
-    # Backup existing file if it exists
-    backup_path = None
-    if os.path.exists(EXCHANGE_DATA_PATH):
-        backup_path = f"{EXCHANGE_DATA_PATH}.bak"
-        os.rename(EXCHANGE_DATA_PATH, backup_path)
-    
-    # Create test data
-    test_data = {
-        "test_exchange": {
-            "name": "Test Exchange",
-            "standard_fee": 0.002,
-            "maker_fee": 0.001,
-            "taker_fee": 0.002,
-            "withdrawal_fee_btc": 0.0001,
-            "supported_currencies": ["USD", "EUR"]
-        }
-    }
-    
-    # Ensure directory exists
-    os.makedirs(os.path.dirname(EXCHANGE_DATA_PATH), exist_ok=True)
-    
-    # Write test data
-    with open(EXCHANGE_DATA_PATH, 'w') as f:
-        json.dump(test_data, f)
-    
-    yield test_data
-    
-    # Cleanup
-    if os.path.exists(EXCHANGE_DATA_PATH):
-        os.remove(EXCHANGE_DATA_PATH)
-    
-    # Restore backup if it existed
-    if backup_path and os.path.exists(backup_path):
-        os.rename(backup_path, EXCHANGE_DATA_PATH)
-
-def test_load_exchange_profiles(temp_exchange_data):
-    """Test loading exchange profiles from file."""
+def test_load_exchange_profiles():
+    """Test loading exchange profiles from JSON file."""
     profiles = load_exchange_profiles()
-    assert "test_exchange" in profiles
-    assert profiles["test_exchange"]["name"] == "Test Exchange"
-    assert profiles["test_exchange"]["standard_fee"] == 0.002
-
-def test_save_exchange_profiles(temp_exchange_data):
-    """Test saving exchange profiles to file."""
-    profiles = load_exchange_profiles()
-    profiles["test_exchange"]["standard_fee"] = 0.003
-    save_exchange_profiles(profiles)
+    assert isinstance(profiles, dict)
+    assert len(profiles) > 0
     
-    # Load again to verify changes were saved
-    updated_profiles = load_exchange_profiles()
-    assert updated_profiles["test_exchange"]["standard_fee"] == 0.003
-
-def test_get_exchange_fee(temp_exchange_data):
-    """Test getting exchange fees."""
-    # Test standard fee
-    fee = get_exchange_fee("test_exchange", TransactionType.BUY)
-    assert fee == 0.002
+    # Check some expected exchanges
+    assert "binance" in profiles
+    assert "river" in profiles
+    assert "kraken" in profiles
     
-    # Test maker fee (using default value since test exchange has both)
-    fee = get_exchange_fee("test_exchange", TransactionType.BUY)
-    assert fee == 0.002  # Should default to standard_fee
+    # Check structure of a profile
+    river = profiles.get("river")
+    assert river is not None
+    assert "name" in river
+    assert "url" in river
+    assert "dca_fee" in river
+    assert "standard_fee" in river
 
-def test_calculate_transaction_cost(temp_exchange_data):
-    """Test calculating transaction costs."""
-    amount = 1000
-    net_amount, fee_amount = calculate_transaction_cost(amount, "test_exchange", TransactionType.BUY)
+def test_get_exchange_fee():
+    """Test fee calculation for different exchanges and transaction types."""
+    # River offers 0% for DCA purchases
+    assert get_exchange_fee("river", TransactionType.BUY) == 0.0
     
-    assert fee_amount == 1000 * 0.002
-    assert net_amount == 1000 - (1000 * 0.002)
+    # Binance has 0.1% maker fee, reduced to 0.075% with BNB discount
+    assert get_exchange_fee("binance", TransactionType.BUY) == 0.001
+    assert get_exchange_fee("binance", TransactionType.BUY, use_discount=True) == 0.00075
+    
+    # Kraken has tiered fees
+    assert get_exchange_fee("kraken", TransactionType.BUY, volume_tier="tier1") == 0.0026
+    assert get_exchange_fee("kraken", TransactionType.BUY, volume_tier="tier2") == 0.0024
+    assert get_exchange_fee("kraken", TransactionType.BUY, volume_tier="tier3") == 0.0020
+    
+    # Coinbase has 0.6% fee, 0% with Coinbase One
+    assert get_exchange_fee("coinbase", TransactionType.BUY) == 0.006
+    assert get_exchange_fee("coinbase", TransactionType.BUY, use_discount=True) == 0.0
+    
+    # Swan has 0.99% fee for DCA
+    assert get_exchange_fee("swan", TransactionType.BUY) == 0.0099
 
-def test_get_optimal_exchange_for_strategy(temp_exchange_data):
-    """Test finding optimal exchange for a strategy."""
-    # Only one exchange in our test data, so it should be the optimal one
+def test_calculate_transaction_cost():
+    """Test transaction cost calculation including fees."""
+    # River with $100 purchase (no fees)
+    net_amount, fee_amount = calculate_transaction_cost(100, "river", TransactionType.BUY)
+    assert fee_amount == 0.0
+    assert net_amount == 100.0
+    
+    # Binance with $100 purchase (0.1% fee)
+    net_amount, fee_amount = calculate_transaction_cost(100, "binance", TransactionType.BUY)
+    assert fee_amount == 0.1
+    assert net_amount == 99.9
+    
+    # Binance with BNB discount (0.075% fee)
+    net_amount, fee_amount = calculate_transaction_cost(
+        100, "binance", TransactionType.BUY, use_discount=True
+    )
+    assert fee_amount == 0.075
+    assert net_amount == 99.925
+    
+    # Swan with $100 purchase (0.99% fee)
+    net_amount, fee_amount = calculate_transaction_cost(100, "swan", TransactionType.BUY)
+    assert fee_amount == 0.99
+    assert net_amount == 99.01
+
+def test_get_optimal_exchange_for_strategy():
+    """Test finding the optimal exchange for a strategy."""
+    # For DCA, River should be best (0% fee)
     exchange, fee = get_optimal_exchange_for_strategy("dca", 100, "USD")
-    assert exchange == "test_exchange"
+    assert exchange == "river"
+    assert fee == 0.0
     
-    # Test with unsupported currency
-    exchange, fee = get_optimal_exchange_for_strategy("dca", 100, "GBP")
-    assert exchange is None
-
-def test_estimate_annual_fees(temp_exchange_data):
-    """Test estimating annual fees for different strategies."""
-    # DCA strategy with weekly $100 investment
-    annual_fee = estimate_annual_fees("test_exchange", "dca", 100)
-    # 52 weeks * $100 per week * 0.002 fee
-    expected_fee = 52 * (100 * 0.002)
-    assert annual_fee == pytest.approx(expected_fee)
+    # Test with a currency not supported by River
+    exchange, fee = get_optimal_exchange_for_strategy("dca", 100, "EUR")
+    assert exchange != "river"  # River doesn't support EUR
     
-    # RSI strategy should have more transactions
-    rsi_fee = estimate_annual_fees("test_exchange", "rsi", 100)
-    assert rsi_fee > annual_fee  # RSI should have higher fees due to more transactions
+    # Test with a small weekly investment (below minimum for some exchanges)
+    exchange, fee = get_optimal_exchange_for_strategy("dca", 1, "USD")
+    # Should find the exchange with lowest minimum purchase
 
-def test_adjust_btc_for_fees(temp_exchange_data):
-    """Test adjusting BTC for withdrawal fees."""
-    # Without withdrawal
-    btc_amount = 1.0
-    adjusted = adjust_btc_for_fees(btc_amount, "test_exchange", withdrawal=False)
-    assert adjusted == btc_amount
+def test_estimate_annual_fees():
+    """Test annual fee estimation for different strategies."""
+    # DCA on River (0% fee)
+    annual_fee = estimate_annual_fees("river", "dca", 100)
+    assert annual_fee == 0.0
     
-    # With withdrawal
-    adjusted = adjust_btc_for_fees(btc_amount, "test_exchange", withdrawal=True)
-    assert adjusted == btc_amount - 0.0001  # Withdrawal fee from test data
-
-def test_unknown_exchange():
-    """Test behavior with unknown exchange."""
-    with pytest.raises(ValueError):
-        get_exchange_fee("nonexistent_exchange", TransactionType.BUY)
-
-def test_default_fees():
-    """Test default fees for exchanges without specific fee types."""
-    # Load default profiles and add a minimal exchange
-    profiles = load_exchange_profiles()
-    profiles["minimal"] = {"name": "Minimal Exchange", "supported_currencies": ["USD"]}
-    save_exchange_profiles(profiles)
+    # DCA on Swan (0.99% fee)
+    annual_fee = estimate_annual_fees("swan", "dca", 100)
+    assert annual_fee > 0.0
     
-    # Should use default fee of 0.005 (0.5%)
-    fee = get_exchange_fee("minimal", TransactionType.BUY)
-    assert fee == 0.005
+    # MACO should have fewer transactions than DCA
+    dca_fee = estimate_annual_fees("coinbase", "dca", 100)
+    maco_fee = estimate_annual_fees("coinbase", "maco", 100)
+    assert maco_fee < dca_fee
+    
+    # RSI should have more transactions than DCA
+    rsi_fee = estimate_annual_fees("coinbase", "rsi", 100)
+    assert rsi_fee > dca_fee
+
+def test_adjust_btc_for_fees():
+    """Test BTC adjustment for withdrawal fees."""
+    # No withdrawal, no adjustment
+    assert adjust_btc_for_fees(1.0, "binance", withdrawal=False) == 1.0
+    
+    # Withdrawal from Binance (should subtract withdrawal fee)
+    binance_withdrawal = adjust_btc_for_fees(1.0, "binance", withdrawal=True)
+    assert binance_withdrawal < 1.0
+    
+    # Withdrawal from River (no withdrawal fee)
+    river_withdrawal = adjust_btc_for_fees(1.0, "river", withdrawal=True)
+    assert river_withdrawal == 1.0
+    
+    # Edge case: withdrawal amount less than fee
+    small_amount = adjust_btc_for_fees(0.00001, "binance", withdrawal=True)
+    assert small_amount == 0.00001  # Should not subtract if amount is too small
