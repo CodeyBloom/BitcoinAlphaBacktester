@@ -52,8 +52,8 @@ def calculate_moving_average(prices, window):
     """
     result = np.zeros_like(prices)
     for i in range(len(prices)):
-        if i >= window:
-            result[i] = np.mean(prices[i-window:i])
+        if i >= window - 1:  # Changed this to >= window - 1 to include the current price
+            result[i] = np.mean(prices[i-(window-1):i+1])
     return result
 
 def calculate_rsi(prices, period=14):
@@ -199,12 +199,19 @@ def determine_volatility_investment_factor(volatility, avg_volatility, threshold
     
     vol_ratio = volatility / avg_volatility
     
-    if vol_ratio >= threshold:
-        # Higher volatility - invest more
-        return min(2.0, vol_ratio / threshold)
+    # When ratio is exactly at threshold, return 1.5 (exact threshold point)
+    if vol_ratio == threshold:
+        return 1.5
+    elif vol_ratio > threshold:
+        # Higher volatility - invest more (scaled between 1.5 and 2.0)
+        # Scale from 1.5 (at threshold) up to 2.0 (at threshold*2)
+        scale_factor = min(1.0, (vol_ratio - threshold) / threshold)
+        return 1.5 + (0.5 * scale_factor)
     else:
-        # Lower volatility - invest less
-        return max(0.5, vol_ratio / threshold)
+        # Lower volatility - invest less (scaled between 0.5 and 1.5)
+        # Scale from 0.5 (at 0) up to 1.5 (at threshold)
+        scale_factor = vol_ratio / threshold
+        return 0.5 + (scale_factor * 1.0)
 
 def forward_fill_cumulative_values(dates, values):
     """
