@@ -15,6 +15,10 @@ def dca_strategy(df, weekly_investment):
     # Create a copy of the dataframe
     df = df.clone()
     
+    # Add row index if it doesn't exist
+    if "row_index" not in df.columns:
+        df = df.with_row_index("row_index")
+    
     # Initialize investment column (invest on Sundays)
     df = df.with_columns(
         pl.when(pl.col("is_sunday"))
@@ -41,63 +45,78 @@ def value_averaging_strategy(df, weekly_base_investment, target_growth_rate):
     Implement Value Averaging strategy (adjusting investment to achieve target portfolio growth)
     
     Args:
-        df (pandas.DataFrame): Price data with 'date', 'price', 'is_sunday' columns
+        df (polars.DataFrame): Price data with 'date', 'price', 'is_sunday' columns
         weekly_base_investment (float): Base amount to invest weekly
         target_growth_rate (float): Target monthly growth rate (decimal)
         
     Returns:
-        pandas.DataFrame: DataFrame with strategy results
+        polars.DataFrame: DataFrame with strategy results
     """
-    df = df.copy()
+    df = df.clone()
+    
+    # Add row index if it doesn't exist
+    if "row_index" not in df.columns:
+        df = df.with_row_index("row_index")
     
     # Convert weekly to monthly target
     monthly_investment = weekly_base_investment * 4.33  # Average weeks per month
     
     # Initialize columns
-    df["investment"] = 0.0
-    df["target_portfolio_value"] = 0.0
-    df["portfolio_value"] = 0.0
-    df["btc_bought"] = 0.0
-    df["cumulative_investment"] = 0.0
-    df["cumulative_btc"] = 0.0
+    df = df.with_columns([
+        pl.lit(0.0).alias("investment"),
+        pl.lit(0.0).alias("target_portfolio_value"),
+        pl.lit(0.0).alias("portfolio_value"),
+        pl.lit(0.0).alias("btc_bought"),
+        pl.lit(0.0).alias("cumulative_investment"),
+        pl.lit(0.0).alias("cumulative_btc")
+    ])
     
     # Only invest on Sundays
-    sundays = df[df["is_sunday"]].copy()
+    sundays = df.filter(pl.col("is_sunday"))
+    
+    # If there are no Sundays, return the DataFrame as is
+    if len(sundays) == 0:
+        return df
+    
+    # Create arrays to track values for each Sunday
+    sunday_indices = sundays["row_index"].to_numpy()
+    sunday_prices = sundays["price"].to_numpy()
+    sunday_investments = np.zeros(len(sunday_indices))
+    sunday_btc_bought = np.zeros(len(sunday_indices))
+    sunday_cumulative_investment = np.zeros(len(sunday_indices))
+    sunday_cumulative_btc = np.zeros(len(sunday_indices))
+    sunday_portfolio_value = np.zeros(len(sunday_indices))
+    sunday_target_value = np.zeros(len(sunday_indices))
     
     # Counter for months
     month_counter = 0
     
     # For the first Sunday, do regular DCA
-    if not sundays.empty:
-        first_sunday_idx = sundays.index[0]
-        df.loc[first_sunday_idx, "investment"] = weekly_base_investment
-        df.loc[first_sunday_idx, "btc_bought"] = weekly_base_investment / df.loc[first_sunday_idx, "price"]
-        df.loc[first_sunday_idx, "cumulative_btc"] = df.loc[first_sunday_idx, "btc_bought"]
-        df.loc[first_sunday_idx, "cumulative_investment"] = weekly_base_investment
-        df.loc[first_sunday_idx, "portfolio_value"] = df.loc[first_sunday_idx, "cumulative_btc"] * df.loc[first_sunday_idx, "price"]
-        df.loc[first_sunday_idx, "target_portfolio_value"] = monthly_investment / 4.33  # First week's target
+    sunday_investments[0] = weekly_base_investment
+    sunday_btc_bought[0] = weekly_base_investment / sunday_prices[0]
+    sunday_cumulative_btc[0] = sunday_btc_bought[0]
+    sunday_cumulative_investment[0] = weekly_base_investment
+    sunday_portfolio_value[0] = sunday_cumulative_btc[0] * sunday_prices[0]
+    sunday_target_value[0] = monthly_investment / 4.33  # First week's target
     
     # For each subsequent Sunday
-    for i in range(1, len(sundays)):
-        current_idx = sundays.index[i]
-        prev_idx = sundays.index[i-1]
-        
-        # Update cumulative values from previous day
-        df.loc[current_idx, "cumulative_btc"] = df.loc[prev_idx, "cumulative_btc"]
-        df.loc[current_idx, "cumulative_investment"] = df.loc[prev_idx, "cumulative_investment"]
+    for i in range(1, len(sunday_indices)):
+        # Update cumulative values from previous Sunday
+        sunday_cumulative_btc[i] = sunday_cumulative_btc[i-1]
+        sunday_cumulative_investment[i] = sunday_cumulative_investment[i-1]
         
         # Every 4 Sundays (approximately monthly), increase the target
         if i % 4 == 0:
             month_counter += 1
         
         # Calculate target portfolio value (grows by target rate each month)
-        df.loc[current_idx, "target_portfolio_value"] = (monthly_investment * (i+1)/4.33) * (1 + target_growth_rate)**(month_counter)
+        sunday_target_value[i] = (monthly_investment * (i+1)/4.33) * (1 + target_growth_rate)**(month_counter)
         
         # Calculate current portfolio value before new investment
-        df.loc[current_idx, "portfolio_value"] = df.loc[current_idx, "cumulative_btc"] * df.loc[current_idx, "price"]
+        sunday_portfolio_value[i] = sunday_cumulative_btc[i] * sunday_prices[i]
         
         # Determine investment needed to reach target
-        investment_needed = df.loc[current_idx, "target_portfolio_value"] - df.loc[current_idx, "portfolio_value"]
+        investment_needed = sunday_target_value[i] - sunday_portfolio_value[i]
         
         # Limit maximum investment to 3x weekly base for safety
         max_investment = weekly_base_investment * 3
@@ -109,22 +128,95 @@ def value_averaging_strategy(df, weekly_base_investment, target_growth_rate):
         elif investment_needed < min_investment:
             investment_needed = min_investment
         
-        # If investment is positive, buy BTC
-        if investment_needed > 0:
-            df.loc[current_idx, "investment"] = investment_needed
-            df.loc[current_idx, "btc_bought"] = investment_needed / df.loc[current_idx, "price"]
-        # If investment is negative, sell BTC
-        elif investment_needed < 0:
-            df.loc[current_idx, "investment"] = investment_needed
-            df.loc[current_idx, "btc_bought"] = investment_needed / df.loc[current_idx, "price"]
-        
-        # Update cumulative values
-        df.loc[current_idx, "cumulative_investment"] += df.loc[current_idx, "investment"]
-        df.loc[current_idx, "cumulative_btc"] += df.loc[current_idx, "btc_bought"]
+        # If investment is non-zero, adjust holdings
+        if investment_needed != 0:
+            sunday_investments[i] = investment_needed
+            sunday_btc_bought[i] = investment_needed / sunday_prices[i]
+            
+            # Update cumulative values
+            sunday_cumulative_investment[i] += sunday_investments[i]
+            sunday_cumulative_btc[i] += sunday_btc_bought[i]
     
-    # Forward fill cumulative values
-    df["cumulative_investment"] = df["cumulative_investment"].replace(0, np.nan).fillna(method="ffill").fillna(0)
-    df["cumulative_btc"] = df["cumulative_btc"].replace(0, np.nan).fillna(method="ffill").fillna(0)
+    # Create a mapping DataFrame for lookups
+    sunday_map_df = pl.DataFrame({
+        "row_index": sunday_indices,
+        "investment_value": sunday_investments,
+        "btc_bought_value": sunday_btc_bought,
+        "cumulative_investment_value": sunday_cumulative_investment,
+        "cumulative_btc_value": sunday_cumulative_btc,
+        "target_value": sunday_target_value,
+        "portfolio_value_on_sunday": sunday_portfolio_value
+    })
+    
+    # Join the mapping dataframe to update values for Sunday rows
+    df = df.join(
+        sunday_map_df, 
+        on="row_index", 
+        how="left"
+    )
+    
+    # Apply values for Sundays and keep zeros for non-Sundays
+    df = df.with_columns([
+        pl.when(pl.col("is_sunday"))
+        .then(pl.col("investment_value"))
+        .otherwise(0.0)
+        .alias("investment")
+    ])
+    
+    df = df.with_columns([
+        pl.when(pl.col("is_sunday"))
+        .then(pl.col("btc_bought_value"))
+        .otherwise(0.0)
+        .alias("btc_bought")
+    ])
+    
+    df = df.with_columns([
+        pl.when(pl.col("is_sunday"))
+        .then(pl.col("target_value"))
+        .otherwise(0.0)
+        .alias("target_portfolio_value")
+    ])
+    
+    df = df.with_columns([
+        pl.when(pl.col("is_sunday"))
+        .then(pl.col("portfolio_value_on_sunday"))
+        .otherwise(0.0)
+        .alias("portfolio_value")
+    ])
+    
+    # Create a forward-fill function for cumulative values
+    # For each row, we'll find the last Sunday and use its cumulative values
+    def find_last_sunday_values(row_idx):
+        prev_sundays = sunday_map_df.filter(
+            pl.col("row_index") <= row_idx
+        )
+        if len(prev_sundays) > 0:
+            last_sunday = prev_sundays[-1]
+            return last_sunday["cumulative_investment_value"].item(), last_sunday["cumulative_btc_value"].item()
+        else:
+            return 0.0, 0.0
+    
+    # This is a slower approach but avoids the need for multiple iterations
+    cumulative_values = []
+    for row_idx in df["row_index"]:
+        cumulative_investment, cumulative_btc = find_last_sunday_values(row_idx)
+        cumulative_values.append((cumulative_investment, cumulative_btc))
+    
+    # Update cumulative columns
+    df = df.with_columns([
+        pl.Series([v[0] for v in cumulative_values]).alias("cumulative_investment"),
+        pl.Series([v[1] for v in cumulative_values]).alias("cumulative_btc")
+    ])
+    
+    # Drop temporary columns
+    df = df.drop([
+        "investment_value", 
+        "btc_bought_value", 
+        "cumulative_investment_value", 
+        "cumulative_btc_value", 
+        "target_value", 
+        "portfolio_value_on_sunday"
+    ])
     
     return df
 
@@ -507,7 +599,7 @@ def btd_strategy(df, weekly_investment, dip_threshold=0.1, lookback_period=7, mu
         # Check if we have enough data and funds
         if i >= lookback_period and accumulated_funds > 0:
             price_drop = df.iloc[i]["price_drop"]
-            is_dip = not pd.isna(price_drop) and price_drop >= dip_threshold
+            is_dip = not pl.Series([price_drop]).is_null().item() and price_drop >= dip_threshold
             
             # Decide investment amount
             if is_dip:
