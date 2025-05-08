@@ -26,18 +26,41 @@ def calculate_investment_for_dca(is_sunday, weekly_investment):
     """
     return weekly_investment if is_sunday else 0.0
 
-def calculate_btc_bought(investment, price):
+def calculate_btc_bought(investment, price, exchange_id=None, use_discount=False):
     """
-    Pure function to calculate BTC amount bought with a given investment.
+    Pure function to calculate BTC amount bought with a given investment,
+    accounting for exchange fees if specified.
     
     Args:
         investment (float): Amount invested
         price (float): Bitcoin price
+        exchange_id (str, optional): Exchange identifier for fee calculation
+        use_discount (bool, optional): Whether to apply exchange discounts
         
     Returns:
         float: Amount of BTC bought
     """
-    return investment / price if price > 0 else 0.0
+    if price <= 0:
+        return 0
+        
+    if exchange_id:
+        try:
+            from fee_models import calculate_transaction_cost, TransactionType
+            
+            # Calculate the net investment after fees
+            net_investment, _ = calculate_transaction_cost(
+                investment, 
+                exchange_id, 
+                TransactionType.BUY, 
+                use_discount=use_discount
+            )
+            return net_investment / price
+        except (ImportError, ValueError):
+            # If fee calculation fails, fall back to no fees
+            return investment / price
+    else:
+        # No exchange specified, assume no fees
+        return investment / price
 
 def calculate_moving_average(prices, window):
     """
@@ -249,13 +272,15 @@ def find_sundays(dates):
 
 # ===== STRATEGY CALCULATIONS =====
 
-def apply_dca_strategy(df, weekly_investment):
+def apply_dca_strategy(df, weekly_investment, exchange_id=None, use_discount=False):
     """
     Apply Dollar Cost Averaging strategy to price data.
     
     Args:
         df (polars.DataFrame): Price data with 'date', 'price', 'is_sunday' columns
         weekly_investment (float): Amount to invest weekly
+        exchange_id (str, optional): Exchange identifier for fee calculation
+        use_discount (bool, optional): Whether to apply exchange discounts
         
     Returns:
         polars.DataFrame: DataFrame with strategy results
@@ -275,8 +300,8 @@ def apply_dca_strategy(df, weekly_investment):
     investments = np.array([calculate_investment_for_dca(is_sun, weekly_investment) 
                            for is_sun in is_sunday])
     
-    # Calculate BTC bought
-    btc_bought = np.array([calculate_btc_bought(inv, price) 
+    # Calculate BTC bought (with exchange fees if specified)
+    btc_bought = np.array([calculate_btc_bought(inv, price, exchange_id, use_discount) 
                           for inv, price in zip(investments, prices)])
     
     # Calculate cumulative values
@@ -290,6 +315,19 @@ def apply_dca_strategy(df, weekly_investment):
         pl.Series(cumulative_investment).alias("cumulative_investment"),
         pl.Series(cumulative_btc).alias("cumulative_btc")
     ])
+    
+    # Add exchange information if provided
+    if exchange_id:
+        try:
+            from fee_models import get_exchange_fee, TransactionType
+            # Get the fee percentage for reference
+            fee = get_exchange_fee(exchange_id, TransactionType.BUY, use_discount=use_discount)
+            df = df.with_columns([
+                pl.lit(exchange_id).alias("exchange"),
+                pl.lit(fee).alias("fee_percentage")
+            ])
+        except (ImportError, ValueError):
+            pass
     
     return df
 

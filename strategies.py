@@ -15,18 +15,20 @@ from domain import (
     apply_volatility_strategy
 )
 
-def dca_strategy(df, weekly_investment):
+def dca_strategy(df, weekly_investment, exchange_id=None, use_discount=False):
     """
     Implement Dollar Cost Averaging strategy (buying a fixed amount on Sundays)
     
     Args:
         df (polars.DataFrame): Price data with 'date', 'price', 'is_sunday' columns
         weekly_investment (float): Amount to invest weekly
+        exchange_id (str, optional): Exchange identifier for fee calculation
+        use_discount (bool, optional): Whether to apply exchange discounts
         
     Returns:
         polars.DataFrame: DataFrame with strategy results
     """
-    return apply_dca_strategy(df, weekly_investment)
+    return apply_dca_strategy(df, weekly_investment, exchange_id, use_discount)
 
 def value_averaging_strategy(df, weekly_base_investment, target_growth_rate):
     """
