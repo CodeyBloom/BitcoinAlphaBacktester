@@ -30,8 +30,8 @@ def run_optimizer_page():
     **Note:** Optimizations are saved to disk as Arrow files to avoid re-running them each time.
     """)
     
-    # Sidebar for optimizer parameters
-    st.sidebar.header("Optimization Parameters")
+    # Sidebar for result parameters
+    st.sidebar.header("Select Parameters")
     
     # Date range selection 
     today = datetime.date.today()
@@ -55,25 +55,15 @@ def run_optimizer_page():
     # Currency selection
     currency = st.sidebar.selectbox("Currency", ["AUD", "USD"])
     
-    # Optimization iterations
-    n_calls = st.sidebar.slider(
-        "Optimization Iterations", 
-        min_value=10, 
-        max_value=100, 
-        value=30,
-        help="More iterations give better results but take longer"
-    )
-    
     # Strategy selection
-    st.sidebar.header("Strategies to Optimize")
+    st.sidebar.header("Strategies to View")
     optimize_dca = st.sidebar.checkbox("Dollar Cost Averaging", value=True)
     optimize_maco = st.sidebar.checkbox("Moving Average Crossover", value=True)
     optimize_rsi = st.sidebar.checkbox("RSI-Based Strategy", value=True)
     optimize_volatility = st.sidebar.checkbox("Volatility-Based Strategy", value=True)
     
-    # Button to start optimization
-    run_button = st.sidebar.button("Run New Optimization", type="primary")
-    load_button = st.sidebar.button("Load Saved Results", type="secondary")
+    # Button to load optimization results
+    load_button = st.sidebar.button("Load Optimization Results", type="primary")
     
     # Display explanatory text
     with st.expander("How Bayesian Optimization Works"):
@@ -161,63 +151,8 @@ def run_optimizer_page():
                 return None
         return None
 
-    # Handle run button click - start optimization process
-    if run_button:
-        if not selected_strategies:
-            st.error("Please select at least one strategy to optimize.")
-        else:
-            try:
-                # Use subprocess to run the optimization script
-                with st.spinner("Running optimization... This may take several minutes."):
-                    # For each selected strategy, run the optimization script
-                    for strategy in selected_strategies:
-                        # Run the optimization script in a subprocess
-                        st.info(f"Optimizing {strategy.upper()} strategy...")
-                        cmd = [
-                            "python", "run_optimizations.py",
-                            f"--strategy={strategy}",
-                            f"--start-date={start_date_str}",
-                            f"--end-date={end_date_str}",
-                            f"--currency={currency}",
-                            f"--n-calls={n_calls}"
-                        ]
-                        process = subprocess.run(cmd, capture_output=True, text=True)
-                        
-                        if process.returncode != 0:
-                            st.error(f"Error running optimization for {strategy}: {process.stderr}")
-                        else:
-                            st.success(f"Optimization for {strategy} completed successfully")
-                
-                # After all optimizations are done, load the results
-                all_results = {}
-                for strategy in selected_strategies:
-                    if optimization_exists(strategy):
-                        result = load_optimization_results(strategy)
-                        if result is not None:
-                            all_results[strategy] = result
-                
-                # Display results
-                if len(all_results) == 1:
-                    # Single strategy optimization
-                    strategy = list(all_results.keys())[0]
-                    display_optimization_results(all_results[strategy], single_strategy=True)
-                elif len(all_results) > 1:
-                    # Multi-strategy optimization
-                    # Find best strategy among optimized ones
-                    best_strategy_name = max(
-                        all_results.items(),
-                        key=lambda x: x[1]["performance"]["final_btc"]
-                    )[0]
-                    
-                    display_optimization_results(all_results, best_strategy_name, single_strategy=False)
-                else:
-                    st.error("No optimization results were loaded. Try running the optimizations again.")
-            
-            except Exception as e:
-                st.error(f"An error occurred: {str(e)}")
-    
     # Handle load button click - load existing results
-    elif load_button:
+    if load_button:
         if not selected_strategies:
             st.error("Please select at least one strategy to load results for.")
         else:
@@ -238,7 +173,7 @@ def run_optimizer_page():
                 # Warn about missing results
                 if missing_results:
                     missing_str = ", ".join([s.upper() for s in missing_results])
-                    st.warning(f"No saved results found for: {missing_str}. Run optimization first.")
+                    st.warning(f"No saved results found for: {missing_str}. Pre-calculated optimization results may not be available for these strategies.")
                 
                 # Display results
                 if len(all_results) == 1:
@@ -255,7 +190,7 @@ def run_optimizer_page():
                     
                     display_optimization_results(all_results, best_strategy_name, single_strategy=False)
                 else:
-                    st.error("No optimization results were loaded. Try running the optimizations first.")
+                    st.error("No optimization results were loaded. Pre-calculated optimization results may not be available for the selected strategies and date range.")
             
             except Exception as e:
                 st.error(f"An error occurred while loading results: {str(e)}")
@@ -263,7 +198,7 @@ def run_optimizer_page():
         # Show existing optimization files
         optimization_files = list(Path(OPTIMIZATION_DIR).glob("*.arrow")) + list(Path(OPTIMIZATION_DIR).glob("*.ipc"))
         if optimization_files:
-            st.info("Saved optimization results exist. Click 'Load Saved Results' to view them.")
+            st.info("Saved optimization results exist. Click 'Load Optimization Results' to view them.")
             
             # Show a table of available optimization files
             file_data = []
@@ -293,18 +228,18 @@ def run_optimizer_page():
                 st.dataframe(pd.DataFrame(file_data))
         else:
             # Display instructions when page first loads
-            st.info("👈 Select your optimization parameters and click 'Run New Optimization' to start.")
+            st.info("👈 Select your optimization parameters and click 'Load Optimization Results' to view saved optimization results.")
             
             st.markdown("""
-            ## What the optimizer will find:
+            ## Optimization Results Show:
             
             1. **The best exchange** for each strategy based on fee structures
             2. **Optimal parameters** for each trading strategy
             3. **Ideal weekly investment** amount for maximum BTC accumulation
             4. **Comparative performance** showing which strategy works best
             
-            The optimization uses historical Bitcoin price data from the selected date range to simulate 
-            strategy performance under different parameter combinations.
+            The optimization results are based on historical Bitcoin price data simulation
+            of strategy performance under different parameter combinations.
             """)
 
 
