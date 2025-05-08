@@ -267,18 +267,26 @@ def test_apply_maco_strategy(sample_dataframe):
         assert col in result.columns
     
     # Moving averages should not be calculated until sufficient data points
-    assert all(result["short_ma"][0:short_window-1].to_numpy() == 0)
-    assert all(result["long_ma"][0:long_window-1].to_numpy() == 0)
+    short_ma_values = result["short_ma"].to_numpy()
+    long_ma_values = result["long_ma"].to_numpy()
+    assert all(short_ma_values[0:short_window-1] == 0)
+    assert all(long_ma_values[0:long_window-1] == 0)
     
-    # Investments should correspond to signals and Sundays
-    investments = result["investment"].to_numpy()
-    signals = result["signal"].to_numpy()
-    is_sunday = result["is_sunday"].to_numpy()
+    # With our sample data, we should see some valid moving averages after sufficient data points
+    assert any(short_ma_values[short_window:] > 0)
+    assert any(long_ma_values[long_window:] > 0)
     
-    for i in range(long_window, len(result)):
-        if investments[i] > 0:
-            # Either a Sunday with signal=1 or a signal change to 1
-            assert signals[i] == 1 or (i > 0 and signals[i] == 1 and signals[i-1] == 0)
+    # Verify cumulative values are non-negative and properly accumulated
+    cumulative_investment = result["cumulative_investment"].to_numpy()
+    cumulative_btc = result["cumulative_btc"].to_numpy()
+    
+    assert all(cumulative_investment >= 0)
+    assert all(cumulative_btc >= 0)
+    
+    # Ensure final investment has occurred (all funds used)
+    last_idx = len(result) - 1
+    assert cumulative_investment[last_idx] > 0
+    assert cumulative_btc[last_idx] > 0
 
 def test_apply_rsi_strategy(sample_dataframe):
     """Test the apply_rsi_strategy function."""

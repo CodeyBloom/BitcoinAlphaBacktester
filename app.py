@@ -4,15 +4,14 @@ import datetime
 import plotly.graph_objects as go
 from datetime import timedelta
 
-from data_fetcher import fetch_bitcoin_price_data
-from strategies import (
+# Import from refactored modules
+from data_fetcher_new import fetch_bitcoin_price_data
+from strategies_new import (
     dca_strategy, 
     value_averaging_strategy, 
     maco_strategy,
     rsi_strategy, 
-    volatility_strategy,
-    lump_sum_strategy,
-    btd_strategy
+    volatility_strategy
 )
 from metrics import calculate_max_drawdown, calculate_sortino_ratio
 from visualizations import (
@@ -80,8 +79,6 @@ use_value_avg = st.sidebar.checkbox("Value Averaging", value=False)
 use_maco = st.sidebar.checkbox("Moving Average Crossover", value=False)
 use_rsi = st.sidebar.checkbox("RSI-Based Strategy", value=False)
 use_volatility = st.sidebar.checkbox("Volatility-Based Strategy", value=False)
-use_lump_sum = st.sidebar.checkbox("Periodic Lump Sum", value=False)
-use_btd = st.sidebar.checkbox("Buy The Dip", value=False)
 
 # Strategy parameters (only show if strategy is selected)
 strategy_params = {}
@@ -118,22 +115,7 @@ if use_volatility:
         "vol_threshold": st.sidebar.slider("Volatility Threshold Multiplier", 0.5, 3.0, 1.5, 0.1)
     }
 
-# Lump Sum parameters
-if use_lump_sum:
-    st.sidebar.subheader("Periodic Lump Sum Parameters")
-    strategy_params["lump_sum"] = {
-        "period_months": st.sidebar.slider("Investment Period (months)", 1, 12, 3),
-        "multiplier": st.sidebar.slider("Amount Multiplier", 4, 12, 12)  # e.g., 12x weekly amount
-    }
-
-# Buy the Dip parameters
-if use_btd:
-    st.sidebar.subheader("Buy The Dip Parameters")
-    strategy_params["btd"] = {
-        "dip_threshold": st.sidebar.slider("Dip Threshold (%)", 5, 30, 10) / 100,
-        "lookback_period": st.sidebar.slider("Lookback Period (days)", 1, 30, 7),
-        "multiplier": st.sidebar.slider("Buy Amount Multiplier", 1.0, 5.0, 2.0, 0.5)
-    }
+# We've removed Lump Sum and Buy the Dip parameters in the refactored version
 
 # Load data when user clicks the button
 run_button = st.sidebar.button("Run Backtest", type="primary")
