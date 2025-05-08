@@ -4,9 +4,9 @@ import datetime
 import plotly.graph_objects as go
 from datetime import timedelta
 
-# Import from refactored modules
-from data_fetcher_new import fetch_bitcoin_price_data
-from strategies_new import (
+# Import from the refactored modules
+from data_fetcher import fetch_bitcoin_price_data
+from strategies import (
     dca_strategy, 
     value_averaging_strategy, 
     maco_strategy,
