@@ -21,6 +21,8 @@ from visualizations import (
 )
 # Import fee models for exchange selection
 from fee_models import load_exchange_profiles, get_optimal_exchange_for_strategy
+# Import optimizer page
+from optimize_app import run_optimizer_page
 
 # Set page configuration
 st.set_page_config(
@@ -29,19 +31,27 @@ st.set_page_config(
     layout="wide"
 )
 
-# Title and description
-st.title("Bitcoin Strategy Backtesting Tool")
-st.markdown("""
-This tool allows you to compare different investment strategies for Bitcoin against the baseline
-Dollar Cost Averaging (DCA) strategy. See which approaches might generate alpha over a simple DCA approach.
-""")
+# Navigation
+st.sidebar.title("Navigation")
+page = st.sidebar.radio("Select Page", ["Backtest Strategies", "Optimize Strategies"])
 
-# Sidebar for date selection and strategy parameters
-st.sidebar.header("Backtest Parameters")
-st.sidebar.markdown("""
-💾 Historical Bitcoin data is stored locally for faster and more extensive backtesting.
-If data for your selected date range isn't available locally, it will be fetched from CoinGecko.
-""")
+if page == "Optimize Strategies":
+    # Run the optimizer page
+    run_optimizer_page()
+else:  # "Backtest Strategies"
+    # Title and description for the backtester page
+    st.title("Bitcoin Strategy Backtesting Tool")
+    st.markdown("""
+    This tool allows you to compare different investment strategies for Bitcoin against the baseline
+    Dollar Cost Averaging (DCA) strategy. See which approaches might generate alpha over a simple DCA approach.
+    """)
+    
+    # Sidebar for date selection and strategy parameters
+    st.sidebar.header("Backtest Parameters")
+    st.sidebar.markdown("""
+    💾 Historical Bitcoin data is stored locally for faster and more extensive backtesting.
+    If data for your selected date range isn't available locally, it will be fetched from CoinGecko.
+    """)
 
 # Date range selection 
 today = datetime.date.today()
