@@ -1,6 +1,6 @@
 import httpx
-import pandas as pd
-from datetime import datetime, timedelta
+import polars as pl
+from datetime import datetime, timedelta, date
 import time
 
 def fetch_bitcoin_price_data(start_date_str, end_date_str, currency="AUD"):
@@ -13,7 +13,7 @@ def fetch_bitcoin_price_data(start_date_str, end_date_str, currency="AUD"):
         currency (str): Currency to fetch prices in (default: AUD)
         
     Returns:
-        pandas.DataFrame: Dataframe with historical price data
+        polars.DataFrame: Dataframe with historical price data
     """
     # Convert dates to required format
     start_date = datetime.strptime(start_date_str, "%d-%m-%Y")
@@ -46,34 +46,76 @@ def fetch_bitcoin_price_data(start_date_str, end_date_str, currency="AUD"):
                 return None
             
             # Create DataFrame from price data
-            df_prices = pd.DataFrame(prices, columns=["timestamp", "price"])
+            df_prices = pl.DataFrame(
+                {"timestamp": [p[0] for p in prices], 
+                 "price": [p[1] for p in prices]}
+            )
             
             # Convert timestamp (milliseconds) to datetime
-            df_prices["date"] = pd.to_datetime(df_prices["timestamp"], unit="ms")
+            df_prices = df_prices.with_columns(
+                pl.from_epoch("timestamp", time_unit="ms").alias("date")
+            )
             
-            # Set date as index and drop timestamp column
-            df_prices = df_prices.drop(columns=["timestamp"])
-            df_prices = df_prices.set_index("date")
+            # Drop timestamp column
+            df_prices = df_prices.drop("timestamp")
             
-            # Resample to daily data (close price)
-            daily_df = df_prices.resample("D").last()
+            # Sort by date to ensure chronological order
+            df_prices = df_prices.sort("date")
             
-            # Reset index for easier manipulation
-            daily_df = daily_df.reset_index()
+            # Convert to daily data (last price of each day)
+            daily_df = df_prices.group_by_dynamic("date", every="1d").agg(
+                pl.last("price").alias("price")
+            )
+            
+            # Make sure we have a row for each day in the range
+            min_date = df_prices["date"].min()
+            max_date = df_prices["date"].max()
+            
+            # Create a date range if we have valid min and max dates
+            if min_date is not None and max_date is not None:
+                # Create a list of dates from min_date to max_date
+                # This is a workaround for potential type issues with date_range
+                from datetime import datetime, timedelta
+                start_date = min_date if isinstance(min_date, datetime) else min_date.to_pydatetime()
+                end_date = max_date if isinstance(max_date, datetime) else max_date.to_pydatetime()
+                days_diff = (end_date - start_date).days + 1
+                
+                date_list = [start_date + timedelta(days=i) for i in range(days_diff)]
+                full_date_range = pl.Series(date_list)
+            else:
+                # Fallback if no valid dates
+                full_date_range = df_prices["date"]
+            
+            daily_df = pl.DataFrame({"date": full_date_range}).join(
+                daily_df, on="date", how="left"
+            )
+            
+            # Forward fill missing values
+            daily_df = daily_df.with_columns(
+                pl.col("price").fill_null(strategy="forward")
+            )
             
             # Add day of week
-            daily_df["day_of_week"] = daily_df["date"].dt.dayofweek
+            daily_df = daily_df.with_columns(
+                pl.col("date").dt.weekday().alias("day_of_week")
+            )
             
             # Add is_sunday flag
-            daily_df["is_sunday"] = daily_df["day_of_week"] == 6
+            daily_df = daily_df.with_columns(
+                (pl.col("day_of_week") == 6).alias("is_sunday")
+            )
             
-            # Add volatility columns (will be filled by strategy functions)
-            daily_df["returns"] = daily_df["price"].pct_change()
+            # Add returns column
+            daily_df = daily_df.with_columns(
+                pl.col("price").pct_change().alias("returns")
+            )
             
             # Add columns that will be used by strategies
-            daily_df["cumulative_investment"] = 0.0
-            daily_df["btc_bought"] = 0.0
-            daily_df["cumulative_btc"] = 0.0
+            daily_df = daily_df.with_columns([
+                pl.lit(0.0).alias("cumulative_investment"),
+                pl.lit(0.0).alias("btc_bought"),
+                pl.lit(0.0).alias("cumulative_btc")
+            ])
             
             return daily_df
         

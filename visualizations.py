@@ -1,6 +1,6 @@
 import plotly.graph_objects as go
 import plotly.express as px
-import pandas as pd
+import polars as pl
 import numpy as np
 from metrics import calculate_drawdown_over_time
 
@@ -17,10 +17,14 @@ def plot_cumulative_bitcoin(strategy_results):
     fig = go.Figure()
     
     for strategy_name, df in strategy_results.items():
+        # Convert Polars dataframe columns to lists for Plotly
+        dates = df["date"].to_list()
+        btc_values = df["cumulative_btc"].to_list()
+        
         fig.add_trace(
             go.Scatter(
-                x=df["date"],
-                y=df["cumulative_btc"],
+                x=dates,
+                y=btc_values,
                 mode="lines",
                 name=strategy_name
             )
@@ -57,10 +61,14 @@ def plot_max_drawdown(strategy_results):
         # Calculate drawdown over time
         drawdown = calculate_drawdown_over_time(df)
         
+        # Convert Polars series to lists for Plotly
+        dates = df["date"].to_list()
+        drawdown_values = (drawdown * 100).to_list()  # Convert to percentage
+        
         fig.add_trace(
             go.Scatter(
-                x=df["date"],
-                y=drawdown * 100,  # Convert to percentage
+                x=dates,
+                y=drawdown_values,
                 mode="lines",
                 name=strategy_name
             )

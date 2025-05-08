@@ -1,4 +1,4 @@
-import pandas as pd
+import polars as pl
 import numpy as np
 
 def dca_strategy(df, weekly_investment):
@@ -6,27 +6,33 @@ def dca_strategy(df, weekly_investment):
     Implement Dollar Cost Averaging strategy (buying a fixed amount on Sundays)
     
     Args:
-        df (pandas.DataFrame): Price data with 'date', 'price', 'is_sunday' columns
+        df (polars.DataFrame): Price data with 'date', 'price', 'is_sunday' columns
         weekly_investment (float): Amount to invest weekly
         
     Returns:
-        pandas.DataFrame: DataFrame with strategy results
+        polars.DataFrame: DataFrame with strategy results
     """
-    df = df.copy()
+    # Create a copy of the dataframe
+    df = df.clone()
     
-    # Initialize columns
-    df["investment"] = 0.0  # Amount invested on each day
-    df["btc_bought"] = 0.0  # BTC bought on each day
-    df["cumulative_investment"] = 0.0  # Running total of investment
-    df["cumulative_btc"] = 0.0  # Running total of BTC
+    # Initialize investment column (invest on Sundays)
+    df = df.with_columns(
+        pl.when(pl.col("is_sunday"))
+        .then(weekly_investment)
+        .otherwise(0.0)
+        .alias("investment")
+    )
     
-    # Apply DCA strategy (invest fixed amount on Sundays)
-    df.loc[df["is_sunday"], "investment"] = weekly_investment
-    df["btc_bought"] = df["investment"] / df["price"]
+    # Calculate BTC bought
+    df = df.with_columns(
+        (pl.col("investment") / pl.col("price")).alias("btc_bought")
+    )
     
     # Calculate cumulative values
-    df["cumulative_investment"] = df["investment"].cumsum()
-    df["cumulative_btc"] = df["btc_bought"].cumsum()
+    df = df.with_columns([
+        pl.col("investment").cum_sum().alias("cumulative_investment"),
+        pl.col("btc_bought").cum_sum().alias("cumulative_btc")
+    ])
     
     return df
 

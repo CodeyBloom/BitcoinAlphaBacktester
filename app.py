@@ -1,5 +1,5 @@
 import streamlit as st
-import pandas as pd
+import polars as pl
 import datetime
 import plotly.graph_objects as go
 from datetime import timedelta
