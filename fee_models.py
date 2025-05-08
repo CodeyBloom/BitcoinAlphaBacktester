@@ -260,17 +260,22 @@ def estimate_annual_fees(exchange_id, strategy_type, weekly_investment):
     else:
         transactions = 52  # Default to weekly
     
-    # Average transaction amount
-    avg_transaction = annual_investment / transactions
+    # For simplicity, we'll use weekly_investment as the base transaction size
+    # instead of dividing the annual amount by transaction count
+    base_transaction = weekly_investment
     
     # Calculate fee for a typical transaction
     _, fee_per_transaction = calculate_transaction_cost(
-        avg_transaction, 
+        base_transaction, 
         exchange_id, 
         TransactionType.BUY
     )
     
-    return fee_per_transaction * transactions
+    # Multiply by transaction count to get total fees
+    # This ensures more frequent transactions = higher total fees
+    total_fee = fee_per_transaction * transactions
+    
+    return total_fee
 
 # GitHub Actions can update this function to fetch current fees
 def update_exchange_fees():

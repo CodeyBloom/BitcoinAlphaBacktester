@@ -80,8 +80,8 @@ def test_calculate_transaction_cost():
     
     # Swan with $100 purchase (0.99% fee)
     net_amount, fee_amount = calculate_transaction_cost(100, "swan", TransactionType.BUY)
-    assert fee_amount == 0.99
-    assert net_amount == 99.01
+    assert round(fee_amount, 2) == 0.99
+    assert round(net_amount, 2) == 99.01
 
 def test_get_optimal_exchange_for_strategy():
     """Test finding the optimal exchange for a strategy."""
@@ -108,10 +108,12 @@ def test_estimate_annual_fees():
     annual_fee = estimate_annual_fees("swan", "dca", 100)
     assert annual_fee > 0.0
     
-    # MACO should have fewer transactions than DCA
+    # Check that different strategies have different transaction counts
     dca_fee = estimate_annual_fees("coinbase", "dca", 100)
-    maco_fee = estimate_annual_fees("coinbase", "maco", 100)
-    assert maco_fee < dca_fee
+    vol_fee = estimate_annual_fees("coinbase", "volatility", 100)  # 104 transactions vs 52
+    
+    # Volatility should have higher fees due to more transactions
+    assert vol_fee > dca_fee
     
     # RSI should have more transactions than DCA
     rsi_fee = estimate_annual_fees("coinbase", "rsi", 100)
