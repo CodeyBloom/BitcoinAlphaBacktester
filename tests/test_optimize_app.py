@@ -312,6 +312,54 @@ def test_xgboost_ml_optimization_display(mock_st):
     assert "Prediction Threshold" in str(mock_st.info_calls)
     assert "Feature Set" in str(mock_st.info_calls)
     
+def test_graph_shows_efficiency(mock_st):
+    """Test that the graph shows efficiency rather than accumulation"""
+    # Test data for multiple strategies
+    results = {
+        "dca": {
+            "strategy": "dca",
+            "best_params": {
+                "exchange_id": "binance",
+                "weekly_investment": 100.0,
+                "use_discount": True
+            },
+            "performance": {
+                "final_btc": 0.45678912,
+                "max_drawdown": 0.21,
+                "sortino_ratio": 1.35
+            }
+        },
+        "maco": {
+            "strategy": "maco",
+            "best_params": {
+                "exchange_id": "coinbase",
+                "weekly_investment": 150.0,
+                "use_discount": False,
+                "short_window": 15,
+                "long_window": 75
+            },
+            "performance": {
+                "final_btc": 0.55678912,
+                "max_drawdown": 0.28,
+                "sortino_ratio": 1.12
+            }
+        }
+    }
+    
+    # Call the function
+    display_optimization_results(results, best_strategy_name="maco", single_strategy=False, currency="AUD")
+    
+    # Assertions
+    assert len(mock_st.plotly_calls) == 1  # One plot was created
+    fig = mock_st.plotly_calls[0]
+    
+    # Verify that efficiency is in the y-axis label
+    assert "Efficiency" in fig.layout.yaxis.title.text
+    assert "BTC/AUD" in fig.layout.yaxis.title.text or "BTC per AUD" in fig.layout.yaxis.title.text
+    
+    # Verify that it's not showing accumulated BTC
+    assert "BTC Accumulated" not in fig.layout.yaxis.title.text
+
 def test_calculate_efficiency(mock_st):
     """Test efficiency calculation"""
     # Test data

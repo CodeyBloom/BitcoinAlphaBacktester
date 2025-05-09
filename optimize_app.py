@@ -520,25 +520,34 @@ def display_optimization_results(results, best_strategy_name=None, single_strate
             # Get parameters for this strategy
             params = result["best_params"]
             weekly_investment = params.get("weekly_investment", 100)
-            weekly_btc = weekly_investment / 10000  # Just a scaling factor to create realistic curves
+            
+            # Calculate efficiency (BTC per currency unit spent)
+            # Use same calculation as in other parts of the code
+            # Get the selected time period from session state or default to 1 year
+            selected_time_period = st.session_state.get("current_time_period", "1 Year")
+            years = time_periods.get(selected_time_period, 1)
+            weeks = 52 * years
+            total_investment = weekly_investment * weeks
+            
+            final_btc = result["performance"]["final_btc"]
+            final_efficiency = final_btc / total_investment if total_investment > 0 else 0
             
             # Create cumulative curve (S-shaped growth with some randomness)
             days = len(dates)
             
-            # Base curve - sigmoid function scaled to match final BTC amount
+            # Base curve - sigmoid function scaled to match final efficiency
             x = np.linspace(-5, 5, days)
             sigmoid = 1 / (1 + np.exp(-x))
             
-            # Scale to match final BTC
-            final_btc = result["performance"]["final_btc"]
-            cumulative_btc = sigmoid * final_btc
+            # Scale to match final efficiency (BTC/currency)
+            efficiency_curve = sigmoid * final_efficiency
             
             # Add some strategy-specific patterns
             if strategy_name == "maco":
                 # Add some steps to simulate crossover events
                 for i in range(5, days, int(days/7)):
-                    step_size = final_btc * 0.05 * np.random.random()
-                    cumulative_btc[i:] += step_size
+                    step_size = final_efficiency * 0.05 * np.random.random()
+                    efficiency_curve[i:] += step_size
             
             elif strategy_name == "rsi":
                 # Add more purchases during dips
@@ -546,21 +555,21 @@ def display_optimization_results(results, best_strategy_name=None, single_strate
                     if np.random.random() > 0.5:  # 50% chance of a dip
                         dip_length = int(days/20)
                         dip_idx = min(i + dip_length, days-1)
-                        boost = final_btc * 0.03 * np.random.random()
-                        cumulative_btc[i:dip_idx] += np.linspace(0, boost, dip_idx-i)
+                        boost = final_efficiency * 0.03 * np.random.random()
+                        efficiency_curve[i:dip_idx] += np.linspace(0, boost, dip_idx-i)
             
             elif strategy_name == "volatility":
                 # Add volatility-based spikes
                 for i in range(int(days/8), days, int(days/4)):
                     if np.random.random() > 0.4:  # 60% chance of volatility event
-                        spike_size = final_btc * 0.07 * np.random.random()
+                        spike_size = final_efficiency * 0.07 * np.random.random()
                         spike_length = int(days/25)
                         spike_idx = min(i + spike_length, days-1)
-                        cumulative_btc[i:spike_idx] += np.linspace(0, spike_size, spike_idx-i)
+                        efficiency_curve[i:spike_idx] += np.linspace(0, spike_size, spike_idx-i)
             
-            # Ensure we end exactly at the final BTC amount
-            adjustment_factor = final_btc / cumulative_btc[-1]
-            cumulative_btc = cumulative_btc * adjustment_factor
+            # Ensure we end exactly at the final efficiency value
+            adjustment_factor = final_efficiency / efficiency_curve[-1] if efficiency_curve[-1] > 0 else 1
+            efficiency_curve = efficiency_curve * adjustment_factor
             
             # Format the strategy name for display
             display_name = strategy_name.upper()
@@ -570,17 +579,17 @@ def display_optimization_results(results, best_strategy_name=None, single_strate
             # Add line to plot
             fig.add_trace(go.Scatter(
                 x=dates, 
-                y=cumulative_btc,
+                y=efficiency_curve,
                 mode='lines',
                 name=display_name,
-                hovertemplate='%{y:.8f} BTC<br>%{x|%d %b %Y}<extra></extra>'
+                hovertemplate='%{y:.8f} BTC/' + currency + '<br>%{x|%d %b %Y}<extra></extra>'
             ))
         
         # Update layout with no title to prevent 'undefined' text
         fig.update_layout(
             title_text='',  # Empty string instead of None
             xaxis_title="Date",
-            yaxis_title="BTC Accumulated",
+            yaxis_title=f"Efficiency (BTC/{currency})",
             legend_title="Strategies",
             hovermode="x unified",
             template="plotly_white"
