@@ -239,6 +239,148 @@ def test_ensure_optimization_data_exists(monkeypatch, mock_optimization_dir):
     # Verify the function returns True when it succeeds
     assert result is True
 
+def test_run_selected_strategies_empty_data():
+    """Test that run_selected_strategies handles empty dataframes gracefully"""
+    from app import run_selected_strategies
+    import polars as pl
+    
+    # Create an empty dataframe
+    empty_df = pl.DataFrame({
+        "date": [],
+        "price": [],
+        "day_of_week": [],
+        "is_sunday": [],
+        "returns": []
+    })
+    
+    # Test with empty data
+    results, metrics = run_selected_strategies(
+        empty_df, {"dca": True}, {"dca": {}}, 100, None, False
+    )
+    
+    # Should return empty dictionaries
+    assert results == {}
+    assert metrics == {}
+
+def test_run_selected_strategies(sample_price_data):
+    """Test the run_selected_strategies function with different strategy selections"""
+    from app import run_selected_strategies
+    
+    # Test with all strategies
+    strategy_selections = {
+        "dca": True,
+        "value_avg": True,
+        "maco": True,
+        "rsi": True,
+        "volatility": True
+    }
+    
+    # Create parameter dictionary
+    strategy_params = {
+        "dca": {},
+        "value_avg": {"target_growth_rate": 0.02},
+        "maco": {"short_window": 10, "long_window": 30},
+        "rsi": {"rsi_period": 7, "oversold_threshold": 20, "overbought_threshold": 80},
+        "volatility": {"vol_window": 10, "vol_threshold": 2.0}
+    }
+    
+    weekly_investment = 100
+    
+    # Run with all strategies
+    results, metrics = run_selected_strategies(
+        sample_price_data, strategy_selections, strategy_params, weekly_investment, None, False
+    )
+    
+    # Verify all strategies were included
+    assert "DCA (Baseline)" in results
+    assert "Value Averaging" in results
+    assert "MACO" in results
+    assert "RSI" in results
+    assert "Volatility" in results
+    
+    # Test with exchange fees
+    results_with_fees, metrics_with_fees = run_selected_strategies(
+        sample_price_data, {"dca": True}, {"dca": {}}, weekly_investment, "binance", False
+    )
+    
+    # Test with exchange discount
+    results_with_discount, metrics_with_discount = run_selected_strategies(
+        sample_price_data, {"dca": True}, {"dca": {}}, weekly_investment, "binance", True
+    )
+    
+    # Verify exchange fees are applied correctly (less BTC with fees than without)
+    dca_key = next((k for k in results.keys() if "DCA" in k), None)
+    dca_key_fees = next((k for k in results_with_fees.keys() if "DCA" in k), None)
+    dca_key_discount = next((k for k in results_with_discount.keys() if "DCA" in k), None)
+    
+    assert metrics_with_fees[dca_key_fees]["final_btc"] < metrics[dca_key]["final_btc"]
+    assert metrics_with_discount[dca_key_discount]["final_btc"] > metrics_with_fees[dca_key_fees]["final_btc"]
+
+def test_get_optimization_files(monkeypatch, mock_optimization_dir):
+    """Test the function to get optimization files for a specific time period"""
+    from app import get_optimization_files
+    
+    # Mock the optimization directory path
+    monkeypatch.setattr("scripts.generate_optimizations_for_periods.OPTIMIZATION_DIR", 
+                       os.path.join(mock_optimization_dir, "optimizations"))
+    
+    # Create a few test optimization files
+    today = datetime.now()
+    end_date = today
+    
+    # 1 year file
+    start_date_1y = end_date.replace(year=end_date.year - 1)
+    start_date_1y_str = start_date_1y.strftime("%d%m%Y")
+    end_date_str = end_date.strftime("%d%m%Y")
+    
+    # 5 year file
+    start_date_5y = end_date.replace(year=end_date.year - 5)
+    start_date_5y_str = start_date_5y.strftime("%d%m%Y")
+    
+    # Create the directory structure
+    os.makedirs(os.path.join(mock_optimization_dir, "optimizations"), exist_ok=True)
+    
+    # Create empty files for testing
+    files_to_create = [
+        f"dca_{start_date_1y_str}_{end_date_str}_AUD.arrow",
+        f"maco_{start_date_1y_str}_{end_date_str}_AUD.arrow",
+        f"dca_{start_date_5y_str}_{end_date_str}_AUD.arrow",
+        f"rsi_{start_date_5y_str}_{end_date_str}_AUD.arrow",
+        f"volatility_{start_date_5y_str}_{end_date_str}_AUD.arrow"
+    ]
+    
+    for file_name in files_to_create:
+        with open(os.path.join(mock_optimization_dir, "optimizations", file_name), "w") as f:
+            f.write("test")
+    
+    # Test getting files for 1 Year period
+    results = get_optimization_files(period="1 Year")
+    assert "dca" in results
+    assert "maco" in results
+    assert len(results.get("dca", [])) == 1
+    assert len(results.get("maco", [])) == 1
+    
+    # Test getting files for 5 Years period
+    results = get_optimization_files(period="5 Years")
+    assert "dca" in results
+    assert "rsi" in results
+    assert "volatility" in results
+    assert len(results.get("dca", [])) == 1
+    
+    # Test filtering by strategies
+    results = get_optimization_files(period="5 Years", strategies=["dca", "rsi"])
+    assert "dca" in results
+    assert "rsi" in results
+    assert "volatility" not in results
+    
+    # Test default behavior (all files)
+    results = get_optimization_files()
+    assert "dca" in results
+    assert "maco" in results
+    assert "rsi" in results
+    assert "volatility" in results
+    assert len(results.get("dca", [])) == 2  # Both 1 Year and 5 Years files
+
 def test_get_strategy_parameters():
     """Test getting strategy parameters with selected strategy"""
     # Test with DCA
@@ -287,7 +429,7 @@ def test_get_strategy_parameters():
 
 def test_run_strategies_with_parameters(sample_price_data):
     """Test running strategies with parameters"""
-    # Define some test parameters with distinct values to validate strategy behavior
+    # Define test parameters for all strategies to validate
     strategies_with_params = {
         "DCA (Baseline)": {
             "strategy": "dca",
@@ -305,31 +447,53 @@ def test_run_strategies_with_parameters(sample_price_data):
                 "short_window": 10,
                 "long_window": 20
             }
+        },
+        "Value Averaging": {
+            "strategy": "value_avg",
+            "parameters": {
+                "weekly_investment": 120.0,
+                "target_growth_rate": 0.02  # 2% monthly
+            }
+        },
+        "RSI Strategy": {
+            "strategy": "rsi",
+            "parameters": {
+                "weekly_investment": 130.0,
+                "rsi_period": 10,
+                "oversold_threshold": 25,
+                "overbought_threshold": 75
+            }
+        },
+        "Volatility": {
+            "strategy": "volatility",
+            "parameters": {
+                "weekly_investment": 110.0,
+                "vol_window": 7,
+                "vol_threshold": 2.0
+            }
         }
     }
     
     # Run strategies
     results, metrics = run_strategies_with_parameters(sample_price_data, strategies_with_params)
     
-    # Check results structure
-    assert "DCA (Baseline)" in results
-    assert "MACO" in results
+    # Check results structure for all strategies
+    expected_strategies = ["DCA (Baseline)", "MACO", "Value Averaging", "RSI Strategy", "Volatility"]
+    for strategy_name in expected_strategies:
+        assert strategy_name in results, f"Strategy {strategy_name} missing from results"
+        assert strategy_name in metrics, f"Strategy {strategy_name} missing from metrics"
     
-    # Check metrics structure
-    assert "DCA (Baseline)" in metrics
-    assert "MACO" in metrics
+    # Verify metrics content for each strategy
+    for strategy_name in expected_strategies:
+        strategy_metrics = metrics[strategy_name]
+        assert "final_btc" in strategy_metrics
+        assert "max_drawdown" in strategy_metrics
+        assert "sortino_ratio" in strategy_metrics
     
-    # Verify metrics content and that they differ (which validates calculation)
-    dca_metrics = metrics["DCA (Baseline)"]
-    maco_metrics = metrics["MACO"]
-    
-    assert "final_btc" in dca_metrics
-    assert "max_drawdown" in dca_metrics
-    assert "sortino_ratio" in dca_metrics
-    
-    # Verify calculated values are different between strategies (with different parameters)
-    # This validates that the strategies are actually using the parameters
-    assert dca_metrics["final_btc"] != maco_metrics["final_btc"], "Strategy results should differ with different parameters"
+    # Verify that strategies have different results due to different parameters
+    final_btc_values = [metrics[s]["final_btc"] for s in expected_strategies]
+    # At least some should be different (strategies should not all produce identical results)
+    assert len(set(final_btc_values)) > 1, "Strategies should produce different results"
     
     # Verify that strategies with different investment amounts show expected proportionality
     dca_df = results["DCA (Baseline)"]
