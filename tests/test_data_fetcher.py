@@ -9,6 +9,8 @@ import polars as pl
 from datetime import datetime, date
 import os
 import tempfile
+import json
+from unittest.mock import patch, MagicMock
 from data_fetcher import (
     fetch_bitcoin_price_data, 
     fetch_from_api,
@@ -284,6 +286,179 @@ def test_read_from_arrow_file(sample_arrow_file):
     result = read_from_arrow_file(nonexistent_file)
     
     assert result is None
+    
+    # Test with corrupted file
+    with tempfile.NamedTemporaryFile(suffix='.arrow', delete=False) as tmp:
+        # Create a corrupted file (not a valid Arrow file)
+        with open(tmp.name, 'w') as f:
+            f.write("This is not a valid Arrow file format")
+        
+        # Redirect stdout to capture print statements
+        with patch('builtins.print') as mock_print:
+            result = read_from_arrow_file(tmp.name)
+            mock_print.assert_called_once()  # Verify error message was printed
+        
+        assert result is None
+        
+        # Clean up
+        os.remove(tmp.name)
+
+# ===== API FUNCTION TESTS =====
+
+@patch('data_fetcher.httpx.Client')
+def test_fetch_from_api_success(mock_client):
+    """Test successful API data fetching."""
+    # Mock the API response
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = {
+        "prices": [
+            # Format: [timestamp_ms, price]
+            [1672531200000, 16500.0],  # 2023-01-01
+            [1672617600000, 16600.0],  # 2023-01-02
+            [1672704000000, 16400.0]   # 2023-01-03
+        ]
+    }
+    
+    mock_session = MagicMock()
+    mock_session.get.return_value = mock_response
+    mock_client.return_value.__enter__.return_value = mock_session
+    
+    # Test parameters
+    start_date = date(2023, 1, 1)
+    end_date = date(2023, 1, 3)
+    currency = "AUD"
+    
+    # Call the function
+    with patch('builtins.print') as mock_print:
+        result = fetch_from_api(start_date, end_date, currency)
+    
+    # Verify the API was called with correct parameters
+    expected_params = {
+        'vs_currency': currency.lower(),
+        'from': format_date_for_api(start_date),
+        'to': format_date_for_api(end_date)
+    }
+    mock_session.get.assert_called_once()
+    _, kwargs = mock_session.get.call_args
+    assert kwargs['params'] == expected_params
+    
+    # Verify the result
+    assert isinstance(result, pl.DataFrame)
+    assert len(result) == 3
+    assert set(result.columns).issuperset({"date", "price", "day_of_week", "is_sunday", "returns", "row_index"})
+    assert result["price"][0] == 16500.0
+
+@patch('data_fetcher.httpx.Client')
+def test_fetch_from_api_empty_data(mock_client):
+    """Test handling empty data from API."""
+    # Mock the API response
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = {
+        "prices": []  # Empty price list
+    }
+    
+    mock_session = MagicMock()
+    mock_session.get.return_value = mock_response
+    mock_client.return_value.__enter__.return_value = mock_session
+    
+    # Test parameters
+    start_date = date(2023, 1, 1)
+    end_date = date(2023, 1, 3)
+    
+    # Call the function
+    with patch('builtins.print') as mock_print:
+        result = fetch_from_api(start_date, end_date)
+    
+    # Verify appropriate error message was printed and None was returned
+    mock_print.assert_any_call("No price data returned from API")
+    assert result is None
+
+@patch('data_fetcher.httpx.Client')
+def test_fetch_from_api_rate_limit(mock_client):
+    """Test handling rate limit response from API."""
+    # Mock rate limit response followed by successful response
+    mock_rate_limit_response = MagicMock()
+    mock_rate_limit_response.status_code = 429
+    mock_rate_limit_response.headers = {"Retry-After": "1"}  # Short delay for test
+    
+    mock_success_response = MagicMock()
+    mock_success_response.status_code = 200
+    mock_success_response.json.return_value = {
+        "prices": [
+            [1672531200000, 16500.0],  # 2023-01-01
+            [1672617600000, 16600.0]   # 2023-01-02
+        ]
+    }
+    
+    mock_session = MagicMock()
+    # Return rate limit on first call, success on second
+    mock_session.get.side_effect = [mock_rate_limit_response, mock_success_response]
+    mock_client.return_value.__enter__.return_value = mock_session
+    
+    # Test parameters
+    start_date = date(2023, 1, 1)
+    end_date = date(2023, 1, 2)
+    
+    # Call the function
+    with patch('builtins.print') as mock_print, patch('data_fetcher.time.sleep') as mock_sleep:
+        result = fetch_from_api(start_date, end_date)
+    
+    # Verify retry behavior
+    assert mock_session.get.call_count == 2
+    mock_print.assert_any_call("Rate limit hit, waiting for 1 seconds...")
+    mock_sleep.assert_called_once_with(1)
+    
+    # Verify result after retry is successful
+    assert isinstance(result, pl.DataFrame)
+    assert len(result) == 2
+
+@patch('data_fetcher.httpx.Client')
+def test_fetch_from_api_http_error(mock_client):
+    """Test handling HTTP error response from API."""
+    # Mock HTTP error response
+    mock_error_response = MagicMock()
+    mock_error_response.status_code = 500
+    mock_error_response.text = "Internal Server Error"
+    
+    mock_session = MagicMock()
+    mock_session.get.return_value = mock_error_response
+    mock_client.return_value.__enter__.return_value = mock_session
+    
+    # Test parameters
+    start_date = date(2023, 1, 1)
+    end_date = date(2023, 1, 2)
+    
+    # Call the function
+    with patch('builtins.print') as mock_print, patch('data_fetcher.time.sleep') as mock_sleep:
+        result = fetch_from_api(start_date, end_date)
+    
+    # Verify error handling
+    mock_print.assert_any_call(f"API error: 500 - Internal Server Error")
+    assert mock_sleep.call_count == 3  # Called once for each retry attempt
+    assert result is None  # Function should return None after all retries fail
+
+@patch('data_fetcher.httpx.Client')
+def test_fetch_from_api_exception(mock_client):
+    """Test handling exceptions during API call."""
+    # Mock session to raise an exception
+    mock_session = MagicMock()
+    mock_session.get.side_effect = Exception("Connection error")
+    mock_client.return_value.__enter__.return_value = mock_session
+    
+    # Test parameters
+    start_date = date(2023, 1, 1)
+    end_date = date(2023, 1, 2)
+    
+    # Call the function
+    with patch('builtins.print') as mock_print, patch('data_fetcher.time.sleep') as mock_sleep:
+        result = fetch_from_api(start_date, end_date)
+    
+    # Verify error handling
+    mock_print.assert_any_call("Exception while fetching data: Connection error")
+    assert mock_sleep.call_count == 3  # Called once for each retry attempt
+    assert result is None  # Function should return None after all retries fail
 
 if __name__ == "__main__":
     pytest.main(["-xvs", __file__])
