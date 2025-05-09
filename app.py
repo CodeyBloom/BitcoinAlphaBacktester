@@ -26,6 +26,314 @@ from fee_models import load_exchange_profiles, get_optimal_exchange_for_strategy
 # Import optimizer page
 from optimize_app import run_optimizer_page
 
+def run_selected_strategies(df, strategy_selections, strategy_params, 
+                           weekly_investment, exchange_id, use_exchange_discount):
+    """
+    Pure function to run selected strategies on price data.
+    
+    Args:
+        df (polars.DataFrame): Price data with date, price, day_of_week, is_sunday, returns columns
+        strategy_selections (dict): Dictionary of strategy names and boolean selections
+        strategy_params (dict): Dictionary of strategy names and their parameters
+        weekly_investment (float): Weekly investment amount
+        exchange_id (str, optional): Exchange identifier for fee calculation
+        use_exchange_discount (bool): Whether to apply exchange discounts
+        
+    Returns:
+        tuple: (results, metrics)
+            - results: Dictionary of strategy names and their result DataFrames
+            - metrics: Dictionary of strategy names and their performance metrics
+    """
+    # Check if data is empty
+    if df.height == 0:
+        return {}, {}
+    
+    # Initialize results
+    results = {}
+    
+    # Always run DCA as the baseline
+    if strategy_selections.get("dca", True):
+        results["DCA (Baseline)"] = dca_strategy(
+            df.clone(), 
+            weekly_investment, 
+            exchange_id, 
+            use_exchange_discount
+        )
+    
+    # Run Value Averaging if selected
+    if strategy_selections.get("value_avg", False):
+        target_growth_rate = strategy_params.get("value_avg", {}).get("target_growth_rate", 0.01)
+        results["Value Averaging"] = value_averaging_strategy(
+            df.clone(), 
+            weekly_investment, 
+            target_growth_rate
+        )
+    
+    # Run MACO if selected
+    if strategy_selections.get("maco", False):
+        maco_params = strategy_params.get("maco", {})
+        short_window = maco_params.get("short_window", 20)
+        long_window = maco_params.get("long_window", 100)
+        results["MACO"] = maco_strategy(
+            df.clone(), 
+            weekly_investment,
+            short_window,
+            long_window
+        )
+    
+    # Run RSI if selected
+    if strategy_selections.get("rsi", False):
+        rsi_params = strategy_params.get("rsi", {})
+        rsi_period = rsi_params.get("rsi_period", 14)
+        oversold_threshold = rsi_params.get("oversold_threshold", 30)
+        overbought_threshold = rsi_params.get("overbought_threshold", 70)
+        results["RSI"] = rsi_strategy(
+            df.clone(), 
+            weekly_investment,
+            rsi_period,
+            oversold_threshold,
+            overbought_threshold
+        )
+    
+    # Run Volatility if selected
+    if strategy_selections.get("volatility", False):
+        vol_params = strategy_params.get("volatility", {})
+        vol_window = vol_params.get("vol_window", 14)
+        vol_threshold = vol_params.get("vol_threshold", 1.5)
+        results["Volatility"] = volatility_strategy(
+            df.clone(), 
+            weekly_investment,
+            vol_window,
+            vol_threshold
+        )
+    
+    # Calculate metrics for each strategy
+    metrics = {}
+    for strategy_name, strategy_df in results.items():
+        max_drawdown = calculate_max_drawdown(strategy_df)
+        sortino = calculate_sortino_ratio(strategy_df)
+        final_btc = strategy_df["cumulative_btc"].tail(1).item()
+        
+        metrics[strategy_name] = {
+            "final_btc": final_btc,
+            "max_drawdown": max_drawdown,
+            "sortino_ratio": sortino
+        }
+    
+    return results, metrics
+
+def run_strategies_with_parameters(df, strategies_with_params):
+    """
+    Pure function to run strategies with specific parameters.
+    
+    Args:
+        df (polars.DataFrame): Price data frame
+        strategies_with_params (dict): Dictionary of strategy names and their parameters
+            {
+                "Strategy Name": {
+                    "strategy": strategy_id,
+                    "parameters": {param1: value1, ...}
+                }
+            }
+    
+    Returns:
+        tuple: (results, metrics) 
+            - results: Dictionary of strategy names and their result DataFrames
+            - metrics: Dictionary of strategy names and their performance metrics
+    """
+    if df.height == 0:
+        return {}, {}
+        
+    results = {}
+    
+    for strategy_name, config in strategies_with_params.items():
+        strategy_id = config["strategy"]
+        params = config["parameters"]
+        
+        if strategy_id == "dca":
+            weekly_investment = params.get("weekly_investment", 100.0)
+            exchange_id = params.get("exchange_id")
+            use_discount = params.get("use_discount", False)
+            
+            results[strategy_name] = dca_strategy(
+                df.clone(), 
+                weekly_investment, 
+                exchange_id, 
+                use_discount
+            )
+            
+        elif strategy_id == "value_avg":
+            weekly_investment = params.get("weekly_investment", 100.0)
+            target_growth_rate = params.get("target_growth_rate", 0.01)
+            
+            results[strategy_name] = value_averaging_strategy(
+                df.clone(), 
+                weekly_investment, 
+                target_growth_rate
+            )
+            
+        elif strategy_id == "maco":
+            weekly_investment = params.get("weekly_investment", 100.0)
+            short_window = params.get("short_window", 20)
+            long_window = params.get("long_window", 100)
+            
+            results[strategy_name] = maco_strategy(
+                df.clone(), 
+                weekly_investment,
+                short_window,
+                long_window
+            )
+            
+        elif strategy_id == "rsi":
+            weekly_investment = params.get("weekly_investment", 100.0)
+            rsi_period = params.get("rsi_period", 14)
+            oversold_threshold = params.get("oversold_threshold", 30)
+            overbought_threshold = params.get("overbought_threshold", 70)
+            
+            results[strategy_name] = rsi_strategy(
+                df.clone(), 
+                weekly_investment,
+                rsi_period,
+                oversold_threshold,
+                overbought_threshold
+            )
+            
+        elif strategy_id == "volatility":
+            weekly_investment = params.get("weekly_investment", 100.0)
+            vol_window = params.get("vol_window", 14)
+            vol_threshold = params.get("vol_threshold", 1.5)
+            
+            results[strategy_name] = volatility_strategy(
+                df.clone(), 
+                weekly_investment,
+                vol_window,
+                vol_threshold
+            )
+    
+    # Calculate performance metrics
+    metrics = {}
+    for strategy_name, strategy_df in results.items():
+        max_drawdown = calculate_max_drawdown(strategy_df)
+        sortino = calculate_sortino_ratio(strategy_df)
+        final_btc = strategy_df["cumulative_btc"].tail(1).item()
+        
+        metrics[strategy_name] = {
+            "final_btc": final_btc,
+            "max_drawdown": max_drawdown,
+            "sortino_ratio": sortino
+        }
+    
+    return results, metrics
+
+def get_strategy_parameters(strategy_name):
+    """
+    Pure function to get default parameters for a strategy.
+    
+    Args:
+        strategy_name (str): Name of the strategy
+        
+    Returns:
+        dict: Dictionary of parameters for the strategy
+    """
+    # Parameter dictionary for each strategy
+    if strategy_name == "dca":
+        return {
+            "weekly_investment": 100.0,
+            "exchange_id": None,
+            "use_discount": False
+        }
+    elif strategy_name == "value_avg":
+        return {
+            "weekly_investment": 100.0,
+            "exchange_id": None,
+            "target_growth_rate": 0.01  # 1% monthly
+        }
+    elif strategy_name == "maco":
+        return {
+            "weekly_investment": 100.0,
+            "exchange_id": None,
+            "short_window": 20,
+            "long_window": 100
+        }
+    elif strategy_name == "rsi":
+        return {
+            "weekly_investment": 100.0,
+            "exchange_id": None,
+            "rsi_period": 14,
+            "oversold_threshold": 30,
+            "overbought_threshold": 70
+        }
+    elif strategy_name == "volatility":
+        return {
+            "weekly_investment": 100.0,
+            "exchange_id": None,
+            "vol_window": 14,
+            "vol_threshold": 1.5
+        }
+    else:
+        # Return empty dict for unknown strategies
+        return {}
+
+def get_optimization_files(period=None, strategies=None, currency="AUD"):
+    """
+    Get optimization files for a specific time period.
+    
+    Args:
+        period (str, optional): Time period ("1 Year", "5 Years", "10 Years")
+        strategies (list, optional): List of strategies to include
+        currency (str, optional): Currency code (default: "AUD")
+    
+    Returns:
+        dict: Dictionary of strategy names and their optimization files
+    """
+    import os
+    import glob
+    from scripts.generate_optimizations_for_periods import OPTIMIZATION_DIR
+    
+    # Define period mappings
+    period_years = {
+        "1 Year": 1,
+        "5 Years": 5,
+        "10 Years": 10
+    }
+    
+    # Default values
+    if strategies is None:
+        strategies = ["dca", "maco", "rsi", "volatility"]
+    
+    # Get today's date
+    today = datetime.date.today()
+    
+    # Build wildcard pattern
+    if period:
+        years = period_years.get(period)
+        if years:
+            start_date = today.replace(year=today.year - years)
+            start_date_str = start_date.strftime("%d%m%Y")
+            end_date_str = today.strftime("%d%m%Y")
+            pattern = f"*_{start_date_str}_{end_date_str}_{currency}.arrow"
+        else:
+            pattern = f"*_{currency}.arrow"
+    else:
+        pattern = f"*_{currency}.arrow"
+    
+    # Find all matching files
+    search_path = os.path.join(OPTIMIZATION_DIR, pattern)
+    optimization_files = glob.glob(search_path)
+    
+    # Filter by strategies if specified
+    results = {}
+    for file_path in optimization_files:
+        file_name = os.path.basename(file_path)
+        strategy = file_name.split('_')[0]
+        
+        if strategy in strategies:
+            if strategy not in results:
+                results[strategy] = []
+            results[strategy].append(file_path)
+    
+    return results
+
 # Ensure sample optimization data exists
 def ensure_optimization_data_exists():
     """Check if optimization data exists and generate it if necessary"""
@@ -287,54 +595,25 @@ else:  # "Backtest Strategies"
                         st.sidebar.info(f"Running strategies with **{exchange_id}** exchange fees" + 
                                      (" with loyalty discounts" if use_exchange_discount else ""))
                     
-                    # Run baseline DCA strategy
-                    with st.spinner("Running DCA strategy..."):
-                        dca_result = dca_strategy(df.clone(), weekly_investment, exchange_id, use_exchange_discount)
-                        strategy_results["DCA (Baseline)"] = dca_result
+                    # Collect strategy selections
+                    strategy_selections = {
+                        "dca": True,  # Always run as baseline
+                        "value_avg": use_value_avg,
+                        "maco": use_maco,
+                        "rsi": use_rsi,
+                        "volatility": use_volatility
+                    }
                     
-                    # Run Value Averaging if selected
-                    if use_value_avg:
-                        with st.spinner("Running Value Averaging strategy..."):
-                            va_result = value_averaging_strategy(
-                                df.clone(), 
-                                weekly_investment, 
-                                strategy_params["value_avg"]["target_growth_rate"]
-                            )
-                            strategy_results["Value Averaging"] = va_result
-                    
-                    # Run MACO if selected
-                    if use_maco:
-                        with st.spinner("Running Moving Average Crossover strategy..."):
-                            maco_result = maco_strategy(
-                                df.clone(), 
-                                weekly_investment,
-                                strategy_params["maco"]["short_window"],
-                                strategy_params["maco"]["long_window"]
-                            )
-                            strategy_results["MACO"] = maco_result
-                    
-                    # Run RSI if selected
-                    if use_rsi:
-                        with st.spinner("Running RSI-based strategy..."):
-                            rsi_result = rsi_strategy(
-                                df.clone(), 
-                                weekly_investment,
-                                strategy_params["rsi"]["rsi_period"],
-                                strategy_params["rsi"]["oversold_threshold"],
-                                strategy_params["rsi"]["overbought_threshold"]
-                            )
-                            strategy_results["RSI"] = rsi_result
-                    
-                    # Run Volatility if selected
-                    if use_volatility:
-                        with st.spinner("Running Volatility-based strategy..."):
-                            vol_result = volatility_strategy(
-                                df.clone(), 
-                                weekly_investment,
-                                strategy_params["volatility"]["vol_window"],
-                                strategy_params["volatility"]["vol_threshold"]
-                            )
-                            strategy_results["Volatility"] = vol_result
+                    # Run the strategies using the pure function
+                    with st.spinner("Running selected strategies..."):
+                        strategy_results, performance_metrics = run_selected_strategies(
+                            df, 
+                            strategy_selections, 
+                            strategy_params, 
+                            weekly_investment,
+                            exchange_id,
+                            use_exchange_discount
+                        )
                             
                     # Show exchange information if used
                     if exchange_id:
@@ -353,22 +632,15 @@ else:  # "Backtest Strategies"
                     
                     # The Lump Sum and Buy the Dip strategies have been removed in the refactored version
                     
-                    # Calculate performance metrics
-                    performance_metrics = {}
-                    
+                    # Enhance the metrics with additional information for display
                     for strategy_name, strategy_df in strategy_results.items():
-                        max_drawdown = calculate_max_drawdown(strategy_df)
-                        sortino = calculate_sortino_ratio(strategy_df)
-                        final_btc = strategy_df["cumulative_btc"].tail(1).item()
-                        total_invested = strategy_df["cumulative_investment"].tail(1).item()
-                        
-                        performance_metrics[strategy_name] = {
-                            "final_btc": final_btc,
-                            "total_invested": total_invested,
-                            "max_drawdown": max_drawdown,
-                            "sortino_ratio": sortino,
-                            "btc_per_currency": final_btc / total_invested * weekly_investment
-                        }
+                        if strategy_name in performance_metrics:
+                            total_invested = strategy_df["cumulative_investment"].tail(1).item()
+                            performance_metrics[strategy_name]["total_invested"] = total_invested
+                            
+                            # Calculate BTC per currency (efficiency metric)
+                            final_btc = performance_metrics[strategy_name]["final_btc"]
+                            performance_metrics[strategy_name]["btc_per_currency"] = final_btc / total_invested * weekly_investment
                     
                     # Display summary of results
                     st.header("Performance Summary")
