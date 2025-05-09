@@ -1,18 +1,12 @@
 #!/usr/bin/env python3
 """
-Script to fetch Bitcoin price data using the CoinGecko API.
-This script handles the API's limitation of 365 days of historical data for free API users.
-
-For free API users:
-- Fetches the maximum allowed 365 days of historical data
-- Adds a note about the API limitations
-
-For paid API users (requires API key):
-- Attempts to fetch multiple years of data by making sequential requests
-- Combines the results into a single dataset
+Script to fetch 10 years of Bitcoin price data using the CoinGecko API.
+This script works around the API's limitation of 365 days per request by making
+multiple sequential 365-day requests, each for a different time period,
+and combining them into a complete dataset.
 
 Usage:
-    python scripts/fetch_10yr_bitcoin_data.py [--currency AUD] [--api-key YOUR_API_KEY]
+    python scripts/fetch_10yr_bitcoin_data.py [--currency AUD] [--years 10]
 
 The script will save the data to data/bitcoin_prices.arrow
 """
@@ -32,16 +26,15 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 from data_fetcher import parse_date_string
 from fetch_bitcoin_data import parse_api_response, process_price_data
 
-def fetch_bitcoin_chunk(start_date, end_date, currency="AUD", api_key=None):
+def fetch_bitcoin_chunk(start_date, end_date, currency="AUD"):
     """
     Fetch Bitcoin historical price data from CoinGecko API for a specific date range.
-    Handles rate limiting and retries.
+    Handles rate limiting and retries. For free API users, handles the 365-day limit.
     
     Args:
         start_date (datetime.date): Start date
         end_date (datetime.date): End date
         currency (str): Currency to fetch prices in (default: AUD)
-        api_key (str, optional): CoinGecko API key for paid plans
         
     Returns:
         polars.DataFrame or None: DataFrame with historical price data or None on failure
@@ -49,16 +42,15 @@ def fetch_bitcoin_chunk(start_date, end_date, currency="AUD", api_key=None):
     # CoinGecko API URL for Bitcoin market chart
     url = f"https://api.coingecko.com/api/v3/coins/bitcoin/market_chart/range"
     
-    print(f"Fetching data from {start_date.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')}...")
+    # Check if we're requesting data beyond the 365-day limit
+    one_year_ago = date.today() - timedelta(days=365)
+    if start_date < one_year_ago:
+        print(f"WARNING: Free API limited to last 365 days of data (since {one_year_ago.strftime('%Y-%m-%d')})")
+        print(f"Requested start date {start_date.strftime('%Y-%m-%d')} is outside this range")
+        print("Skipping this chunk")
+        return None
     
-    # Check for free API limitations
-    if api_key is None:
-        # Free API can only access 365 days of historical data
-        one_year_ago = date.today() - timedelta(days=365)
-        if start_date < one_year_ago:
-            print("WARNING: Free API can only access 365 days of historical data")
-            print(f"Adjusting start date from {start_date.strftime('%Y-%m-%d')} to {one_year_ago.strftime('%Y-%m-%d')}")
-            start_date = one_year_ago
+    print(f"Fetching data from {start_date.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')}...")
     
     # Convert dates to Unix timestamps (in seconds)
     start_timestamp = int(datetime.combine(start_date, datetime.min.time()).timestamp())
@@ -70,17 +62,12 @@ def fetch_bitcoin_chunk(start_date, end_date, currency="AUD", api_key=None):
         "to": end_timestamp
     }
     
-    # Set up headers if API key is provided
-    headers = {}
-    if api_key:
-        headers["x-cg-pro-api-key"] = api_key
-    
     max_retries = 3
     retries = 0
     
     while retries < max_retries:
         try:
-            response = httpx.get(url, params=params, headers=headers, timeout=30.0)
+            response = httpx.get(url, params=params, timeout=30.0)
             
             if response.status_code == 200:
                 data = response.json()
@@ -121,12 +108,10 @@ def fetch_bitcoin_chunk(start_date, end_date, currency="AUD", api_key=None):
                 time.sleep(retry_after)
                 continue
                 
-            elif response.status_code == 401 and "Your request exceeds the allowed time range" in response.text:
-                # Free API limitation
-                print("Free API limitation: Cannot fetch data older than 365 days")
-                print("To access historical data, a CoinGecko paid plan is required")
-                if api_key:
-                    print("The provided API key may be invalid or insufficient for historical data")
+            elif response.status_code == 401 and "exceeds the allowed time range" in response.text:
+                # This is the free API limitation
+                print("Data requested exceeds the free API's 365-day historical limit")
+                print("Skipping this chunk")
                 return None
                 
             else:
@@ -142,64 +127,75 @@ def fetch_bitcoin_chunk(start_date, end_date, currency="AUD", api_key=None):
     print(f"Failed to fetch data chunk after {max_retries} retries")
     return None
 
-def fetch_bitcoin_data_for_years(years=10, currency="AUD", api_key=None):
+def generate_date_chunks(years=10):
+    """
+    Generate date chunks to fetch 10 years of Bitcoin data, working backwards from today.
+    Each chunk is 365 days or less in length to comply with API limitations.
+    
+    Args:
+        years (int): Number of years of data to fetch
+        
+    Returns:
+        list: List of (start_date, end_date) tuples
+    """
+    today = date.today()
+    chunks = []
+    
+    # Calculate the start date based on the requested number of years
+    target_start_date = today.replace(year=today.year - years)
+    
+    # Work backwards from today in chunks of at most 365 days
+    chunk_end_date = today
+    
+    while chunk_end_date > target_start_date:
+        # Calculate start date for this chunk (max 365 days earlier)
+        chunk_start_date = chunk_end_date - timedelta(days=364)
+        
+        # Don't go earlier than our target start date
+        if chunk_start_date < target_start_date:
+            chunk_start_date = target_start_date
+            
+        # Add this chunk to our list
+        chunks.append((chunk_start_date, chunk_end_date))
+        
+        # Move to the next chunk
+        chunk_end_date = chunk_start_date - timedelta(days=1)
+    
+    return chunks
+
+def fetch_bitcoin_data_for_years(years=10, currency="AUD"):
     """
     Fetch Bitcoin historical price data from CoinGecko API for a specified number of years.
-    Handles the 1-year limit by making multiple API calls.
+    Handles the 365-day limit by making multiple sequential API calls for different time periods.
     
     Args:
         years (int): Number of years of data to fetch
         currency (str): Currency to fetch prices in (default: AUD)
-        api_key (str, optional): CoinGecko API key for paid plans
         
     Returns:
         polars.DataFrame or None: DataFrame with historical price data or None on failure
     """
-    today = date.today()
     all_dataframes = []
     
-    # Calculate the start date based on the requested number of years
-    initial_start_date = today.replace(year=today.year - years)
+    # Generate date chunks to fetch
+    date_chunks = generate_date_chunks(years)
+    print(f"Generated {len(date_chunks)} date chunks to fetch {years} years of data")
     
-    # If using free API and requesting more than 1 year, print a warning
-    if api_key is None and years > 1:
-        print("WARNING: Free API can only access 365 days of historical data")
-        print(f"You requested {years} years, but only the last year will be available")
-
-    # Split into chunks to respect API's 1-year limitation
-    current_end_date = today
-    
-    # Start from today and go backwards in time, chunk by chunk
-    while current_end_date >= initial_start_date:
-        # Calculate start date for this chunk (max 364 days earlier)
-        days_to_subtract = min(364, (current_end_date - initial_start_date).days)
-        current_start_date = current_end_date - timedelta(days=days_to_subtract)
-        
-        # Ensure we don't go back further than the initial start date
-        if current_start_date < initial_start_date:
-            current_start_date = initial_start_date
-        
-        # Fetch this chunk of data
-        chunk_df = fetch_bitcoin_chunk(current_start_date, current_end_date, currency, api_key)
+    # Fetch each chunk
+    for i, (start_date, end_date) in enumerate(date_chunks):
+        print(f"Fetching chunk {i+1}/{len(date_chunks)}")
+        chunk_df = fetch_bitcoin_chunk(start_date, end_date, currency)
         
         if chunk_df is not None and len(chunk_df) > 0:
             all_dataframes.append(chunk_df)
         else:
-            # If we can't fetch historical data (likely due to free API limits), stop trying
-            if api_key is None and current_end_date.year < today.year:
-                print("Unable to fetch historical data beyond 1 year with free API")
-                break
+            print(f"Failed to fetch chunk {i+1}/{len(date_chunks)}")
         
-        # Move end date to one day before start date for next chunk
-        current_end_date = current_start_date - timedelta(days=1)
-        
-        # If we've reached or passed our desired start date, we're done
-        if current_end_date < initial_start_date:
-            break
-            
         # Be nice to the API - add a delay between chunks
-        print("Waiting 2 seconds before next API call...")
-        time.sleep(2)
+        if i < len(date_chunks) - 1:
+            delay = 2  # seconds
+            print(f"Waiting {delay} seconds before next API call...")
+            time.sleep(delay)
     
     # If no data was fetched, return None
     if not all_dataframes:
@@ -247,22 +243,15 @@ def main():
     parser.add_argument("--currency", type=str, default="AUD", help="Currency (default: AUD)")
     parser.add_argument("--years", type=int, default=10, help="Number of years of data to fetch (default: 10)")
     parser.add_argument("--output", type=str, default="data/bitcoin_prices.arrow", help="Output file path")
-    parser.add_argument("--api-key", type=str, help="CoinGecko API key for paid plans (allows access to data older than 1 year)")
     
     args = parser.parse_args()
     
-    # Check for API key in environment variable if not provided via command line
-    api_key = args.api_key or os.environ.get("COINGECKO_API_KEY")
-    
-    if not api_key and args.years > 1:
-        print("NOTE: No API key provided. Free API limited to 365 days of historical data.")
-        print("To fetch more historical data, upgrade to a paid CoinGecko plan and provide an API key.")
-        print("You can still run the script, but only the most recent 365 days will be retrieved.")
-    
-    print(f"Fetching {args.years} years of Bitcoin price data in {args.currency}...")
+    print(f"Attempting to fetch {args.years} years of Bitcoin price data in {args.currency}...")
+    print("NOTE: Free CoinGecko API only allows access to the last 365 days of data")
+    print("We'll fetch as much data as possible within this limitation")
     
     # Fetch the requested years of data
-    df = fetch_bitcoin_data_for_years(years=args.years, currency=args.currency, api_key=api_key)
+    df = fetch_bitcoin_data_for_years(years=args.years, currency=args.currency)
     
     if df is not None and len(df) > 0:
         # Create data directory if it doesn't exist
@@ -274,12 +263,17 @@ def main():
         print(f"Successfully saved {len(df)} days of Bitcoin price data to {args.output}")
         print(f"Date range: {df['date'].min()} to {df['date'].max()}")
         
-        # Add a note about the data range compared to what was requested
-        days_fetched = len(df)
-        days_requested = 365 * args.years
-        if days_fetched < days_requested * 0.9:  # If we got less than 90% of requested days
-            print(f"WARNING: Only fetched {days_fetched} days of data out of {days_requested} requested.")
-            print("This is likely due to free API limitations. Consider upgrading to a paid plan.")
+        # Report data coverage
+        actual_days = (df['date'].max() - df['date'].min()).days
+        actual_years = actual_days / 365.25
+        print(f"Data spans {actual_days} days (approximately {actual_years:.2f} years)")
+        
+        # Warn about limited data if less than requested
+        requested_days = args.years * 365
+        if actual_days < requested_days * 0.9:  # If we got less than 90% of requested days
+            print(f"\nWARNING: Only fetched {actual_days} days of data out of {requested_days} requested")
+            print("This is due to the CoinGecko free API's 365-day historical limit")
+            print("The application will work with the available data")
         
         return 0
     else:
