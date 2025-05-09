@@ -923,3 +923,154 @@ def apply_volatility_strategy(df, weekly_investment, vol_window=14, vol_threshol
     ])
     
     return df
+
+def apply_xgboost_strategy(df, weekly_investment=100.0, prediction_horizon=7, 
+                          training_days=365, max_investment_factor=2.0, 
+                          min_investment_factor=0.5, exchange_id=None, 
+                          use_discount=False, window_sizes=[7, 14, 30]):
+    """
+    Apply XGBoost-based investment strategy to price data.
+    
+    Args:
+        df (polars.DataFrame): Price data with 'date', 'price', 'is_sunday' columns
+        weekly_investment (float): Base amount to invest weekly
+        prediction_horizon (int): Days ahead to predict returns
+        training_days (int): Number of days to use for training
+        max_investment_factor (float): Maximum multiplier for weekly investment
+        min_investment_factor (float): Minimum multiplier for weekly investment
+        exchange_id (str, optional): Exchange identifier for fee calculation
+        use_discount (bool, optional): Whether to apply exchange discounts
+        window_sizes (list): Window sizes for feature calculation
+        
+    Returns:
+        polars.DataFrame: DataFrame with strategy results
+    """
+    # Create a copy of the dataframe (treating data as immutable)
+    df = df.clone()
+    
+    # Add row index if it doesn't exist
+    if "row_index" not in df.columns:
+        df = df.with_row_index("row_index")
+    
+    # Convert data to numpy arrays for faster processing
+    dates = df["date"].to_numpy()
+    prices = df["price"].to_numpy()
+    returns = df["returns"].to_numpy()
+    is_sunday = df["is_sunday"].to_numpy()
+    day_of_week = df["day_of_week"].to_numpy()
+    
+    # Prepare arrays for storing results
+    investment = np.zeros_like(prices)
+    investment_factor = np.zeros_like(prices)
+    btc_bought = np.zeros_like(prices)
+    cumulative_investment = np.zeros_like(prices)
+    cumulative_btc = np.zeros_like(prices)
+    predicted_returns = np.zeros_like(prices)
+    
+    # Create features for XGBoost model
+    features, feature_names = create_xgboost_features(prices, returns, dates, day_of_week, window_sizes)
+    
+    # Initialize weekly accumulation
+    accumulated_funds = 0
+    
+    # Only start investing after sufficient data for training
+    min_idx = max(training_days, max(window_sizes) * 2)
+    
+    # For each day after minimum index
+    for i in range(min_idx, len(prices)):
+        # Accumulate weekly investment on Sundays
+        if is_sunday[i]:
+            accumulated_funds += weekly_investment
+        
+        # Only predict and invest on Sundays after we have enough training data
+        if i >= min_idx and is_sunday[i]:
+            # Create target for training - future returns over prediction horizon
+            future_returns = np.zeros(i - prediction_horizon)
+            for j in range(i - prediction_horizon):
+                if j + prediction_horizon < len(prices):
+                    price_now = prices[j]
+                    price_future = prices[j + prediction_horizon]
+                    if price_now > 0:
+                        future_returns[j] = price_future / price_now - 1
+            
+            # Create training data
+            X_train = features[:i - prediction_horizon]
+            y_train = future_returns
+            
+            # Filter out NaN values
+            valid_idx = ~np.isnan(y_train)
+            X_train = X_train[valid_idx]
+            y_train = y_train[valid_idx]
+            
+            # Only train if we have enough valid data
+            if len(y_train) > max(window_sizes):
+                # Train model
+                model = xgb.XGBRegressor(
+                    n_estimators=100,
+                    max_depth=4,
+                    learning_rate=0.1,
+                    subsample=0.8,
+                    colsample_bytree=0.8,
+                    objective='reg:squarederror'
+                )
+                model.fit(X_train, y_train)
+                
+                # Get current features
+                X_current = features[i].reshape(1, -1)
+                
+                # Predict future return
+                pred_return = model.predict(X_current)[0]
+                predicted_returns[i] = pred_return
+                
+                # Calculate investment factor based on predicted return
+                factor = calculate_investment_factor_from_prediction(
+                    pred_return, max_investment_factor, min_investment_factor
+                )
+                investment_factor[i] = factor
+                
+                # Calculate investment amount
+                to_invest = min(accumulated_funds, weekly_investment * factor)
+                investment[i] = to_invest
+                btc_bought[i] = calculate_btc_bought(to_invest, prices[i], exchange_id, use_discount)
+                
+                # Update accumulated funds
+                accumulated_funds -= to_invest
+            else:
+                # If insufficient data, use standard DCA
+                to_invest = min(accumulated_funds, weekly_investment)
+                investment[i] = to_invest
+                btc_bought[i] = calculate_btc_bought(to_invest, prices[i], exchange_id, use_discount)
+                accumulated_funds -= to_invest
+            
+            # Update cumulative values
+            if i > 0:
+                cumulative_investment[i] = cumulative_investment[i-1] + investment[i]
+                cumulative_btc[i] = cumulative_btc[i-1] + btc_bought[i]
+            else:
+                cumulative_investment[i] = investment[i]
+                cumulative_btc[i] = btc_bought[i]
+        
+        # If no investment on this day, carry forward cumulative values
+        elif i > 0:
+            cumulative_investment[i] = cumulative_investment[i-1]
+            cumulative_btc[i] = cumulative_btc[i-1]
+    
+    # Make sure we invest any remaining funds on the last day to make fair comparison
+    if accumulated_funds > 0:
+        i = len(prices) - 1
+        investment[i] += accumulated_funds
+        btc_bought[i] += calculate_btc_bought(accumulated_funds, prices[i], exchange_id, use_discount)
+        cumulative_investment[i] += accumulated_funds
+        cumulative_btc[i] += calculate_btc_bought(accumulated_funds, prices[i], exchange_id, use_discount)
+    
+    # Add calculated columns to the dataframe
+    df = df.with_columns([
+        pl.Series(investment).alias("investment"),
+        pl.Series(investment_factor).alias("investment_factor"),
+        pl.Series(predicted_returns).alias("predicted_returns"),
+        pl.Series(btc_bought).alias("btc_bought"),
+        pl.Series(cumulative_investment).alias("cumulative_investment"),
+        pl.Series(cumulative_btc).alias("cumulative_btc")
+    ])
+    
+    return df

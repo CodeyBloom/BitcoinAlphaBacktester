@@ -12,7 +12,8 @@ from domain import (
     apply_value_averaging_strategy,
     apply_maco_strategy,
     apply_rsi_strategy,
-    apply_volatility_strategy
+    apply_volatility_strategy,
+    apply_xgboost_strategy
 )
 
 def dca_strategy(df, weekly_investment, exchange_id=None, use_discount=False):
@@ -89,3 +90,39 @@ def volatility_strategy(df, weekly_investment, vol_window=14, vol_threshold=1.5)
         polars.DataFrame: DataFrame with strategy results
     """
     return apply_volatility_strategy(df, weekly_investment, vol_window, vol_threshold)
+
+def xgboost_strategy(df, weekly_investment=100.0, prediction_horizon=7, training_days=365, 
+                    max_investment_factor=2.0, min_investment_factor=0.5, 
+                    exchange_id=None, use_discount=False, window_sizes=None):
+    """
+    Implement XGBoost-based predictive investment strategy
+    
+    Args:
+        df (polars.DataFrame): Price data with 'date', 'price', 'is_sunday' columns
+        weekly_investment (float): Base amount to invest weekly
+        prediction_horizon (int): Days ahead to predict returns
+        training_days (int): Number of days to use for training
+        max_investment_factor (float): Maximum multiplier for weekly investment
+        min_investment_factor (float): Minimum multiplier for weekly investment
+        exchange_id (str, optional): Exchange identifier for fee calculation
+        use_discount (bool, optional): Whether to apply exchange discounts
+        window_sizes (list, optional): Window sizes for feature calculation
+        
+    Returns:
+        polars.DataFrame: DataFrame with strategy results
+    """
+    # Default window sizes if not provided
+    if window_sizes is None:
+        window_sizes = [7, 14, 30]
+        
+    return apply_xgboost_strategy(
+        df, 
+        weekly_investment, 
+        prediction_horizon, 
+        training_days, 
+        max_investment_factor, 
+        min_investment_factor, 
+        exchange_id, 
+        use_discount, 
+        window_sizes
+    )
