@@ -90,3 +90,19 @@ def volatility_strategy(df, weekly_investment, vol_window=14, vol_threshold=1.5)
         polars.DataFrame: DataFrame with strategy results
     """
     return apply_volatility_strategy(df, weekly_investment, vol_window, vol_threshold)
+
+def xgboost_ml_strategy(df, weekly_investment, training_window=14, prediction_threshold=0.55, features=None):
+    """
+    Implement XGBoost machine learning strategy for Bitcoin investment
+    
+    Args:
+        df (polars.DataFrame): Price data with 'date', 'price', 'is_sunday', 'returns' columns
+        weekly_investment (float): Amount to invest weekly
+        training_window (int): Number of days to use for initial training
+        prediction_threshold (float): Confidence threshold for making investments 
+        features (list, optional): List of column names to use as features
+        
+    Returns:
+        polars.DataFrame: DataFrame with strategy results
+    """
+    return apply_xgboost_ml_strategy(df, weekly_investment, training_window, prediction_threshold, features)

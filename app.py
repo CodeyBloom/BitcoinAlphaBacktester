@@ -13,7 +13,8 @@ from strategies import (
     value_averaging_strategy, 
     maco_strategy,
     rsi_strategy, 
-    volatility_strategy
+    volatility_strategy,
+    xgboost_ml_strategy
 )
 from metrics import calculate_max_drawdown, calculate_sortino_ratio
 from visualizations import (
@@ -269,6 +270,14 @@ def get_strategy_parameters(strategy_name):
             "exchange_id": None,
             "vol_window": 14,
             "vol_threshold": 1.5
+        }
+    elif strategy_name == "xgboost_ml":
+        return {
+            "weekly_investment": 100.0,
+            "exchange_id": None,
+            "training_window": 14,
+            "prediction_threshold": 0.55,
+            "features": ["returns", "price"]
         }
     else:
         # Return empty dict for unknown strategies

@@ -821,11 +821,11 @@ def prepare_features_for_ml(df, features, target_col="returns", target_horizon=1
     
     # Create target values (future returns)
     if target_horizon > 0:
-        target = df[target_col].shift(-target_horizon)
+        target_values = df[target_col].shift(-target_horizon).to_numpy()
         # Convert to binary classification: 1 for positive return, 0 for negative
-        target = np.where(target > 0, 1, 0)
+        target = np.where(target_values > 0, 1, 0)
     else:
-        target = df[target_col]
+        target = df[target_col].to_numpy()
     
     # Extract features
     feature_data = df.select(features).to_numpy()
