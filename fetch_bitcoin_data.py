@@ -5,6 +5,64 @@ import time
 import os
 import sys
 
+def parse_api_response(data):
+    """
+    Parse the CoinGecko API response and extract price data.
+    
+    Args:
+        data (dict): API response from CoinGecko
+        
+    Returns:
+        list: List of (datetime, price) tuples
+    """
+    # Extract price data
+    prices = data.get("prices", [])
+    
+    # Convert to (datetime, price) tuples
+    parsed_data = []
+    for timestamp_ms, price in prices:
+        # Convert milliseconds to seconds and create datetime
+        dt = datetime.fromtimestamp(timestamp_ms / 1000)
+        parsed_data.append((dt, price))
+    
+    return parsed_data
+
+def process_price_data(price_data):
+    """
+    Process price data into a Polars DataFrame with required columns.
+    
+    Args:
+        price_data (list): List of (datetime, price) tuples
+        
+    Returns:
+        polars.DataFrame: Processed DataFrame with all required columns
+    """
+    # Create DataFrame from price data
+    df = pl.DataFrame({
+        "date": [dt for dt, _ in price_data],
+        "price": [price for _, price in price_data]
+    })
+    
+    # Sort by date
+    df = df.sort("date")
+    
+    # Add day of week
+    df = df.with_columns(
+        pl.col("date").dt.weekday().alias("day_of_week")
+    )
+    
+    # Add is_sunday flag
+    df = df.with_columns(
+        (pl.col("day_of_week") == 6).alias("is_sunday")
+    )
+    
+    # Add returns column
+    df = df.with_columns(
+        pl.col("price").pct_change().fill_null(0).alias("returns")
+    )
+    
+    return df
+
 def fetch_last_year_bitcoin_data(currency="AUD"):
     """
     Fetch Bitcoin historical price data from CoinGecko API for the last year.
@@ -13,7 +71,7 @@ def fetch_last_year_bitcoin_data(currency="AUD"):
         currency (str): Currency to fetch prices in (default: AUD)
         
     Returns:
-        polars.DataFrame: Dataframe with historical price data
+        polars.DataFrame: Dataframe with historical price data or None if error
     """
     today = date.today()
     start_date = today - timedelta(days=364)  # API allows max 1 year
@@ -38,62 +96,61 @@ def fetch_last_year_bitcoin_data(currency="AUD"):
     
     while retries < max_retries:
         try:
-            with httpx.Client() as client:
-                response = client.get(url, params=params, timeout=30.0)
+            response = httpx.get(url, params=params, timeout=30.0)
             
             if response.status_code == 200:
                 data = response.json()
                 
-                # Extract price data
-                prices = data.get("prices", [])
+                # Parse API response
+                price_data = parse_api_response(data)
                 
-                if not prices:
+                if not price_data:
                     print("No data returned from API")
                     retries += 1
                     time.sleep(5)
                     continue
                 
-                # Create DataFrame from price data
-                df_prices = pl.DataFrame(
-                    {"timestamp": [p[0] for p in prices], 
-                     "price": [p[1] for p in prices]}
-                )
+                # Process data into DataFrame
+                daily_df = process_price_data(price_data)
                 
-                # Convert timestamp (milliseconds) to datetime
-                df_prices = df_prices.with_columns(
-                    pl.from_epoch("timestamp", time_unit="ms").alias("date")
-                )
-                
-                # Drop timestamp column
-                df_prices = df_prices.drop("timestamp")
-                
-                # Sort by date
-                df_prices = df_prices.sort("date")
-                
-                # Resample to daily data (last price of each day)
-                daily_df = df_prices.group_by_dynamic("date", every="1d").agg(
-                    pl.last("price").alias("price")
-                )
-                
-                # Add day of week
-                daily_df = daily_df.with_columns(
-                    pl.col("date").dt.weekday().alias("day_of_week")
-                )
-                
-                # Add is_sunday flag
-                daily_df = daily_df.with_columns(
-                    (pl.col("day_of_week") == 6).alias("is_sunday")
-                )
-                
-                # Add returns column
-                daily_df = daily_df.with_columns(
-                    pl.col("price").pct_change().alias("returns")
-                )
+                # Resample to daily data if needed (last price of each day)
+                # This ensures we have exactly one price per day
+                if daily_df.select(pl.col("date").dt.date().unique()).height != daily_df.height:
+                    daily_df = daily_df.group_by_dynamic("date", every="1d").agg(
+                        pl.last("price").alias("price"),
+                        pl.last("day_of_week").alias("day_of_week"),
+                        pl.last("is_sunday").alias("is_sunday")
+                    )
+                    
+                    # Recalculate returns after resampling
+                    daily_df = daily_df.with_columns(
+                        pl.col("price").pct_change().fill_null(0).alias("returns")
+                    )
                 
                 # Add row_index (for strategy calculations)
                 daily_df = daily_df.with_row_index("row_index")
                 
                 return daily_df
+                
+            elif response.status_code == 429:
+                # Rate limit hit, wait and retry
+                retry_after = int(response.headers.get("Retry-After", 60))
+                print(f"Rate limit hit, waiting for {retry_after} seconds...")
+                time.sleep(retry_after)
+                continue
+                
+            else:
+                print(f"Error fetching data: {response.status_code} - {response.text}")
+                retries += 1
+                time.sleep(5)
+                return None
+                
+        except Exception as e:
+            print(f"Exception while fetching data: {str(e)}")
+            retries += 1
+            time.sleep(5)
+    
+    return None
                 
             elif response.status_code == 429:
                 # Rate limit hit, wait and retry
