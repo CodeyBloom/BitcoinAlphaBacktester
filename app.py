@@ -29,24 +29,47 @@ from optimize_app import run_optimizer_page
 # Ensure sample optimization data exists
 def ensure_optimization_data_exists():
     """Check if optimization data exists and generate it if necessary"""
-    optimization_dir = "data/optimizations"
-    if not os.path.exists(optimization_dir) or len(os.listdir(optimization_dir)) == 0:
-        st.info("Generating sample optimization data for first run...")
-        try:
-            # Try to import from scripts directory
-            sys.path.insert(0, os.path.abspath("scripts"))
-            try:
-                # Try direct import first
-                from generate_sample_optimizations import main as generate_samples
-                generate_samples()
-            except ImportError:
-                # Then try with scripts prefix
-                from scripts.generate_sample_optimizations import main as generate_samples
-                generate_samples()
-        except Exception as e:
-            st.warning(f"Could not generate sample optimization data: {str(e)}")
-            # Create directory anyway
-            os.makedirs(optimization_dir, exist_ok=True)
+    try:
+        # Import the necessary functions from scripts.generate_sample_optimizations
+        from scripts.generate_sample_optimizations import (
+            generate_sample_data_for_timeperiod,
+            TIME_PERIODS,
+            CURRENCIES
+        )
+        
+        # Check if the optimization directory exists
+        import os
+        from scripts.generate_sample_optimizations import OPTIMIZATION_DIR
+        
+        if not os.path.exists(OPTIMIZATION_DIR):
+            os.makedirs(OPTIMIZATION_DIR)
+        
+        # Check if we have at least some optimization files for each time period
+        for currency in CURRENCIES:
+            for years in TIME_PERIODS:
+                # Check for at least one strategy file for this time period
+                files_exist = False
+                for strategy in ["dca", "maco", "rsi", "volatility"]:
+                    today = datetime.date.today()
+                    start_date = today.replace(year=today.year - years)
+                    start_date_str = start_date.strftime("%d%m%Y")
+                    end_date_str = today.strftime("%d%m%Y")
+                    
+                    filename = f"{strategy}_{start_date_str}_{end_date_str}_{currency}.arrow"
+                    file_path = os.path.join(OPTIMIZATION_DIR, filename)
+                    
+                    if os.path.exists(file_path):
+                        files_exist = True
+                        break
+                
+                # If no files exist for this time period, generate them
+                if not files_exist:
+                    generate_sample_data_for_timeperiod(years, currency)
+                    
+        return True
+    except Exception as e:
+        st.error(f"Error ensuring optimization data exists: {str(e)}")
+        return False
 
 # Set page configuration
 st.set_page_config(
@@ -99,8 +122,8 @@ else:  # "Backtest Strategies"
         max_value=today
     )
 
-    # Investment amount
-    investment_currency = st.sidebar.selectbox("Investment Currency", ["AUD", "USD"])
+    # Investment amount - only AUD as per requirements
+    investment_currency = "AUD"
     weekly_investment = st.sidebar.number_input(
         f"Weekly Investment ({investment_currency})",
         min_value=10,

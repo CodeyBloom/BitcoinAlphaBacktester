@@ -19,8 +19,8 @@ STRATEGIES = ["dca", "maco", "rsi", "volatility"]
 # Predefined time periods (in years)
 TIME_PERIODS = [1, 5, 10]
 
-# Sample currencies
-CURRENCIES = ["AUD", "USD"]
+# Sample currencies - only AUD as per requirements
+CURRENCIES = ["AUD"]
 
 def format_date(date_obj):
     """Format date object as DDMMYYYY string"""

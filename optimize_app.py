@@ -13,6 +13,15 @@ import polars as pl
 import os
 import subprocess
 import sys
+
+# Import optimization generator functions from scripts
+from scripts.generate_sample_optimizations import (
+    create_dca_optimization,
+    create_maco_optimization,
+    create_rsi_optimization,
+    create_volatility_optimization,
+    OPTIMIZATION_DIR
+)
 from datetime import timedelta
 from pathlib import Path
 
@@ -20,17 +29,7 @@ from pathlib import Path
 OPTIMIZATION_DIR = "data/optimizations"
 os.makedirs(OPTIMIZATION_DIR, exist_ok=True)
 
-# Import the sample data generator to ensure we can generate data on demand
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), 'scripts')))
-try:
-    from generate_sample_optimizations import create_dca_optimization, create_maco_optimization, create_rsi_optimization, create_volatility_optimization
-except ImportError:
-    # If we can't import from scripts, try importing directly
-    try:
-        from scripts.generate_sample_optimizations import create_dca_optimization, create_maco_optimization, create_rsi_optimization, create_volatility_optimization
-    except ImportError:
-        # In the worst case, we'll need to define fallback data (handled below)
-        pass
+# Already imported at the top of the file
 
 def run_optimizer_page():
     """Run the strategy optimizer page"""
@@ -57,8 +56,8 @@ def run_optimizer_view():
         "10 Years": 10
     }
     
-    # Currency selection
-    currency = st.sidebar.radio("Currency", ["AUD", "USD"], index=0)
+    # Use AUD as the only currency
+    currency = "AUD"
     
     # Time period selection
     st.sidebar.header("Time Period")
@@ -263,33 +262,41 @@ def run_optimizer_view():
                 }
             }
     
-    # Automatically load results for selected strategies
-    if selected_strategies:
-        all_results = {}
-        
-        # Load results for each selected strategy
-        for strategy in selected_strategies:
-            result = load_optimization_results(strategy)
-            if result is not None:
-                all_results[strategy] = result
-        
-        # Display results
-        if len(all_results) == 1:
-            # Single strategy optimization
-            strategy = list(all_results.keys())[0]
-            display_optimization_results(all_results[strategy], single_strategy=True, currency=currency)
-        elif len(all_results) > 1:
-            # Multi-strategy optimization - find most efficient strategy
-            most_efficient_strategy = max(
-                all_results.items(),
-                key=lambda x: x[1]["performance"]["final_btc"] / (x[1]["best_params"]["weekly_investment"] * 52)
-            )[0]
-            
-            display_optimization_results(all_results, most_efficient_strategy, single_strategy=False, currency=currency)
+    # Add a run optimization button (red)
+    run_button = st.sidebar.button("RUN OPTIMIZATION", type="primary", key="run_optimization", 
+                              help="Load optimization results for the selected time period and strategies")
+    
+    if run_button:
+        if not selected_strategies:
+            st.warning("Please select at least one strategy to view results.")
         else:
-            st.error("No optimization results could be loaded.")
+            with st.spinner(f"Loading optimization results for {selected_period} with {len(selected_strategies)} strategies..."):
+                all_results = {}
+                
+                # Load results for each selected strategy
+                for strategy in selected_strategies:
+                    result = load_optimization_results(strategy)
+                    if result is not None:
+                        all_results[strategy] = result
+                
+                # Display results
+                if len(all_results) == 1:
+                    # Single strategy optimization
+                    strategy = list(all_results.keys())[0]
+                    display_optimization_results(all_results[strategy], single_strategy=True, currency=currency)
+                elif len(all_results) > 1:
+                    # Multi-strategy optimization - find most efficient strategy
+                    most_efficient_strategy = max(
+                        all_results.items(),
+                        key=lambda x: x[1]["performance"]["final_btc"] / (x[1]["best_params"]["weekly_investment"] * 52)
+                    )[0]
+                    
+                    display_optimization_results(all_results, most_efficient_strategy, single_strategy=False, currency=currency)
+                else:
+                    st.error("No optimization results could be loaded.")
     else:
-        st.warning("Please select at least one strategy to view results.")
+        # Display instructions when no button has been pressed
+        st.info("Select a time period and strategies from the sidebar, then click the RUN OPTIMIZATION button to view results.")
 
 
 def display_optimization_results(results, best_strategy_name=None, single_strategy=True, currency="AUD"):
