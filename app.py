@@ -2,6 +2,8 @@ import streamlit as st
 import polars as pl
 import datetime
 import plotly.graph_objects as go
+import os
+import sys
 from datetime import timedelta
 
 # Import from the refactored modules
@@ -24,12 +26,37 @@ from fee_models import load_exchange_profiles, get_optimal_exchange_for_strategy
 # Import optimizer page
 from optimize_app import run_optimizer_page
 
+# Ensure sample optimization data exists
+def ensure_optimization_data_exists():
+    """Check if optimization data exists and generate it if necessary"""
+    optimization_dir = "data/optimizations"
+    if not os.path.exists(optimization_dir) or len(os.listdir(optimization_dir)) == 0:
+        st.info("Generating sample optimization data for first run...")
+        try:
+            # Try to import from scripts directory
+            sys.path.insert(0, os.path.abspath("scripts"))
+            try:
+                # Try direct import first
+                from generate_sample_optimizations import main as generate_samples
+                generate_samples()
+            except ImportError:
+                # Then try with scripts prefix
+                from scripts.generate_sample_optimizations import main as generate_samples
+                generate_samples()
+        except Exception as e:
+            st.warning(f"Could not generate sample optimization data: {str(e)}")
+            # Create directory anyway
+            os.makedirs(optimization_dir, exist_ok=True)
+
 # Set page configuration
 st.set_page_config(
     page_title="Bitcoin Strategy Backtester",
     page_icon="📊",
     layout="wide"
 )
+
+# Ensure we have optimization data before proceeding
+ensure_optimization_data_exists()
 
 # Navigation
 st.sidebar.title("Navigation")
