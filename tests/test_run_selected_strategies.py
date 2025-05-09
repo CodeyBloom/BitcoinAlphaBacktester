@@ -52,11 +52,17 @@ def test_run_selected_strategies_all_selected():
     from app import run_selected_strategies
     
     # Create sample data
-    start_date = datetime(2023, 1, 1)
+    start_date = datetime(2023, 1, 1)  # This is a Sunday
     dates = [start_date + timedelta(days=i) for i in range(30)]
     prices = [20000 + i * 100 for i in range(30)]
     day_of_week = [(start_date + timedelta(days=i)).weekday() for i in range(30)]
-    is_sunday = [dow == 6 for dow in day_of_week]
+    
+    # Ensure we have proper Sundays (Python's weekday() uses 6 for Sunday)
+    is_sunday = [
+        True if i % 7 == 0 else False  # Make every 7th day a Sunday
+        for i in range(30)
+    ]
+    
     returns = [0.0] + [(prices[i] - prices[i-1]) / prices[i-1] for i in range(1, 30)]
     
     df = pl.DataFrame({
@@ -133,11 +139,17 @@ def test_run_selected_strategies_subset_selected():
     from app import run_selected_strategies
     
     # Create sample data
-    start_date = datetime(2023, 1, 1)
+    start_date = datetime(2023, 1, 1)  # This is a Sunday
     dates = [start_date + timedelta(days=i) for i in range(30)]
     prices = [20000 + i * 100 for i in range(30)]
     day_of_week = [(start_date + timedelta(days=i)).weekday() for i in range(30)]
-    is_sunday = [dow == 6 for dow in day_of_week]
+    
+    # Ensure we have proper Sundays (Python's weekday() uses 6 for Sunday)
+    is_sunday = [
+        True if i % 7 == 0 else False  # Make every 7th day a Sunday
+        for i in range(30)
+    ]
+    
     returns = [0.0] + [(prices[i] - prices[i-1]) / prices[i-1] for i in range(1, 30)]
     
     df = pl.DataFrame({
@@ -201,11 +213,17 @@ def test_run_selected_strategies_with_exchange():
     from app import run_selected_strategies
     
     # Create sample data
-    start_date = datetime(2023, 1, 1)
+    start_date = datetime(2023, 1, 1)  # This is a Sunday
     dates = [start_date + timedelta(days=i) for i in range(30)]
     prices = [20000 + i * 100 for i in range(30)]
     day_of_week = [(start_date + timedelta(days=i)).weekday() for i in range(30)]
-    is_sunday = [dow == 6 for dow in day_of_week]
+    
+    # Ensure we have proper Sundays (Python's weekday() uses 6 for Sunday)
+    is_sunday = [
+        True if i % 7 == 0 else False  # Make every 7th day a Sunday
+        for i in range(30)
+    ]
+    
     returns = [0.0] + [(prices[i] - prices[i-1]) / prices[i-1] for i in range(1, 30)]
     
     df = pl.DataFrame({
