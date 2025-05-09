@@ -202,18 +202,19 @@ def test_calculate_day_of_week():
     """Test calculating day of week from dates."""
     df = pl.DataFrame({
         "date": [
-            datetime(2023, 1, 1),  # Sunday
-            datetime(2023, 1, 2),  # Monday
-            datetime(2023, 1, 7)   # Saturday
+            datetime(2023, 1, 1),  # Sunday (ISO weekday is 7)
+            datetime(2023, 1, 2),  # Monday (ISO weekday is 1)
+            datetime(2023, 1, 7)   # Saturday (ISO weekday is 6)
         ]
     })
     
     result = calculate_day_of_week(df)
     
     assert "day_of_week" in result.columns
-    assert result["day_of_week"][0] == 7  # Sunday (polars uses ISO standard where Sunday is 7)
-    assert result["day_of_week"][1] == 1  # Monday (polars uses ISO standard where Monday is 1)
-    assert result["day_of_week"][2] == 6  # Saturday (polars uses ISO standard where Saturday is 6)
+    # Polars dt.weekday() returns ISO weekdays where Monday=1 through Sunday=7
+    assert result["day_of_week"][0] == 7  # Sunday is 7 in ISO
+    assert result["day_of_week"][1] == 1  # Monday is 1 in ISO
+    assert result["day_of_week"][2] == 6  # Saturday is 6 in ISO
 
 def test_flag_sundays():
     """Test flagging Sundays in DataFrame."""

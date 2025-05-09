@@ -95,7 +95,7 @@ def flag_sundays(df):
         polars.DataFrame: DataFrame with is_sunday column
     """
     return df.with_columns(
-        (pl.col("day_of_week") == 6).alias("is_sunday")
+        (pl.col("day_of_week") == 7).alias("is_sunday")
     )
 
 def calculate_returns(df):
