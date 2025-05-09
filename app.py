@@ -775,65 +775,65 @@ else:  # "Backtest Strategies"
                         # Display the comparison table
                         st.dataframe(comparison_df, use_container_width=True, hide_index=True)
                     
-                    # Plot the results
-                    st.header("Strategy Performance Visualization")
-                    
-                    # Efficiency graph (BTC per 100 currency units)
-                    standard_amount = 100.0
-                    st.subheader(f"Strategy Efficiency (BTC per {standard_amount:.0f} {investment_currency})")
-                    efficiency_fig = plot_cumulative_bitcoin(strategy_results, use_efficiency=True, currency=investment_currency)
-                    st.plotly_chart(efficiency_fig, use_container_width=True)
-                    
-                    # Add a tabbed interface for other metrics
-                    tab1, tab2 = st.tabs(["Cumulative BTC", "Maximum Drawdown"])
-                    
-                    with tab1:
-                        cumulative_btc_fig = plot_cumulative_bitcoin(strategy_results)
-                        st.plotly_chart(cumulative_btc_fig, use_container_width=True)
-                    
-                    with tab2:
-                        max_drawdown_fig = plot_max_drawdown(strategy_results)
-                        st.plotly_chart(max_drawdown_fig, use_container_width=True)
-                    
-                    # Display final comparisons against DCA
-                    st.header("Strategy Comparison Against DCA Baseline")
-                    
-                    # Get DCA metrics as baseline
-                    dca_metrics = performance_metrics["DCA (Baseline)"]
-                    
-                    comparison_data = []
-                    for strategy_name, metrics in performance_metrics.items():
-                        if strategy_name != "DCA (Baseline)":
-                            btc_alpha = (metrics["final_btc"] - dca_metrics["final_btc"]) / dca_metrics["final_btc"] * 100
-                            drawdown_improvement = (dca_metrics["max_drawdown"] - metrics["max_drawdown"]) * 100
-                            sortino_improvement = metrics["sortino_ratio"] - dca_metrics["sortino_ratio"]
-                            
-                            comparison_data.append({
-                                "Strategy": strategy_name,
-                                "BTC Alpha (%)": round(btc_alpha, 2),
-                                "Drawdown Improvement (pp)": round(drawdown_improvement, 2),
-                                "Sortino Improvement": round(sortino_improvement, 2)
-                            })
-                    
-                    if comparison_data:
-                        comparison_df = pl.DataFrame(comparison_data)
-                        st.dataframe(comparison_df, use_container_width=True)
+                        # Plot the results
+                        st.header("Strategy Performance Visualization")
                         
-                        # Highlight the best strategy
-                        if len(comparison_data) > 0:
-                            # Find the row with the maximum BTC Alpha
-                            best_row = comparison_df.filter(
-                                pl.col("BTC Alpha (%)") == pl.col("BTC Alpha (%)").max()
-                            ).row(0)
-                            best_strategy = best_row[0]  # First column is Strategy
-                            best_alpha = best_row[1]     # Second column is BTC Alpha (%)
+                        # Efficiency graph (BTC per 100 currency units)
+                        standard_amount = 100.0
+                        st.subheader(f"Strategy Efficiency (BTC per {standard_amount:.0f} {investment_currency})")
+                        efficiency_fig = plot_cumulative_bitcoin(strategy_results, use_efficiency=True, currency=investment_currency)
+                        st.plotly_chart(efficiency_fig, use_container_width=True)
+                        
+                        # Add a tabbed interface for other metrics
+                        tab1, tab2 = st.tabs(["Cumulative BTC", "Maximum Drawdown"])
+                        
+                        with tab1:
+                            cumulative_btc_fig = plot_cumulative_bitcoin(strategy_results)
+                            st.plotly_chart(cumulative_btc_fig, use_container_width=True)
+                        
+                        with tab2:
+                            max_drawdown_fig = plot_max_drawdown(strategy_results)
+                            st.plotly_chart(max_drawdown_fig, use_container_width=True)
+                        
+                        # Display final comparisons against DCA
+                        st.header("Strategy Comparison Against DCA Baseline")
+                        
+                        # Get DCA metrics as baseline
+                        dca_metrics = performance_metrics["DCA (Baseline)"]
+                        
+                        comparison_data = []
+                        for strategy_name, metrics in performance_metrics.items():
+                            if strategy_name != "DCA (Baseline)":
+                                btc_alpha = (metrics["final_btc"] - dca_metrics["final_btc"]) / dca_metrics["final_btc"] * 100
+                                drawdown_improvement = (dca_metrics["max_drawdown"] - metrics["max_drawdown"]) * 100
+                                sortino_improvement = metrics["sortino_ratio"] - dca_metrics["sortino_ratio"]
+                                
+                                comparison_data.append({
+                                    "Strategy": strategy_name,
+                                    "BTC Alpha (%)": round(btc_alpha, 2),
+                                    "Drawdown Improvement (pp)": round(drawdown_improvement, 2),
+                                    "Sortino Improvement": round(sortino_improvement, 2)
+                                })
+                        
+                        if comparison_data:
+                            comparison_df = pl.DataFrame(comparison_data)
+                            st.dataframe(comparison_df, use_container_width=True)
                             
-                            if best_alpha > 0:
-                                st.success(f"The best performing strategy is **{best_strategy}** with a **{best_alpha}%** BTC alpha over DCA.")
-                            else:
-                                st.info("None of the tested strategies outperformed the DCA baseline in this period.")
-                    else:
-                        st.info("No additional strategies were selected for comparison.")
+                            # Highlight the best strategy
+                            if len(comparison_data) > 0:
+                                # Find the row with the maximum BTC Alpha
+                                best_row = comparison_df.filter(
+                                    pl.col("BTC Alpha (%)") == pl.col("BTC Alpha (%)").max()
+                                ).row(0)
+                                best_strategy = best_row[0]  # First column is Strategy
+                                best_alpha = best_row[1]     # Second column is BTC Alpha (%)
+                                
+                                if best_alpha > 0:
+                                    st.success(f"The best performing strategy is **{best_strategy}** with a **{best_alpha}%** BTC alpha over DCA.")
+                                else:
+                                    st.info("None of the tested strategies outperformed the DCA baseline in this period.")
+                        else:
+                            st.info("No additional strategies were selected for comparison.")
             
             except Exception as e:
                 st.error(f"An error occurred: {str(e)}")
