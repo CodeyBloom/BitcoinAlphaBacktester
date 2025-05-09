@@ -15,4 +15,5 @@ dependencies = [
     "scikit-optimize>=0.10.2",
     "streamlit>=1.45.0",
     "trafilatura>=2.0.0",
+    "xgboost>=3.0.0",
 ]

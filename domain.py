@@ -7,6 +7,8 @@ This module follows functional programming principles from "Grokking Simplicity"
 - Complex operations are composed of smaller, reusable functions
 """
 
+import xgboost as xgb
+
 import polars as pl
 import numpy as np
 from datetime import datetime
@@ -269,6 +271,124 @@ def find_sundays(dates):
         np.array: Boolean array indicating which dates are Sundays
     """
     return np.array([d.weekday() == 6 for d in dates])
+
+# ===== XGBOOST FEATURE CREATION AND PROCESSING =====
+
+def create_xgboost_features(prices, returns, dates, day_of_week, window_sizes=[7, 14, 30]):
+    """
+    Pure function to create features for XGBoost model.
+    
+    Args:
+        prices (np.array): Array of price values
+        returns (np.array): Array of return values
+        dates (np.array): Array of date values
+        day_of_week (np.array): Array of day of week values (0-6)
+        window_sizes (list): List of window sizes for feature calculation
+    
+    Returns:
+        tuple: (features, column_names)
+            - features: numpy array of feature values
+            - column_names: list of feature names
+    """
+    # Create output arrays with enough space for all features
+    num_features = len(window_sizes) * 3 + 2 + 3  # 3 features per window + 2 day features + 3 MACD features
+    features = np.zeros((len(prices), num_features))
+    column_names = []
+    
+    feature_idx = 0
+    
+    # Create day of week cyclical features
+    features[:, feature_idx] = np.sin(2 * np.pi * day_of_week / 7)
+    column_names.append("day_sin")
+    feature_idx += 1
+    
+    features[:, feature_idx] = np.cos(2 * np.pi * day_of_week / 7)
+    column_names.append("day_cos")
+    feature_idx += 1
+    
+    # For each window size, calculate features
+    for window in window_sizes:
+        # Price momentum features - Rolling returns
+        roll_returns = np.zeros_like(prices)
+        for i in range(window, len(prices)):
+            roll_returns[i] = prices[i] / prices[i - window] - 1
+        
+        features[:, feature_idx] = roll_returns
+        column_names.append(f"return_{window}d")
+        feature_idx += 1
+        
+        # Moving averages
+        ma = calculate_moving_average(prices, window)
+        features[:, feature_idx] = ma
+        column_names.append(f"ma_{window}d")
+        feature_idx += 1
+        
+        # Volatility
+        vol = calculate_volatility(returns, window)
+        features[:, feature_idx] = vol
+        column_names.append(f"volatility_{window}d")
+        feature_idx += 1
+    
+    # Calculate MACD-like features
+    if len(window_sizes) >= 2:
+        # Ensure we have at least short and long periods
+        short_idx = column_names.index(f"ma_{min(window_sizes)}d")
+        long_idx = column_names.index(f"ma_{max(window_sizes)}d")
+        
+        # MACD line
+        macd = features[:, short_idx] - features[:, long_idx]
+        features[:, feature_idx] = macd
+        column_names.append("macd")
+        feature_idx += 1
+        
+        # Signal line (9-day EMA of MACD)
+        signal = calculate_moving_average(macd, 9)
+        features[:, feature_idx] = signal
+        column_names.append("macd_signal")
+        feature_idx += 1
+        
+        # Histogram
+        features[:, feature_idx] = macd - signal
+        column_names.append("macd_hist")
+        feature_idx += 1
+    
+    return features, column_names
+
+def predict_returns_xgboost(model, features):
+    """
+    Pure function to predict returns using an XGBoost model.
+    
+    Args:
+        model (xgb.Booster): Trained XGBoost model
+        features (np.array): Feature array
+    
+    Returns:
+        np.array: Predicted returns
+    """
+    # Convert features to DMatrix
+    dmatrix = xgb.DMatrix(features)
+    
+    # Make predictions
+    return model.predict(dmatrix)
+
+def calculate_investment_factor_from_prediction(predicted_return, max_factor=2.0, min_factor=0.5):
+    """
+    Pure function to calculate investment factor based on predicted return.
+    
+    Args:
+        predicted_return (float): Predicted return
+        max_factor (float): Maximum investment factor
+        min_factor (float): Minimum investment factor
+    
+    Returns:
+        float: Investment factor (multiplier for base investment)
+    """
+    # Use sigmoid-like function to map predicted return to investment factor
+    # Scale predicted return by 5 to amplify the effect
+    factor = 1.0 + np.tanh(predicted_return * 5.0)
+    
+    # Clip factor to min/max
+    return min(max_factor, max(min_factor, factor))
 
 # ===== STRATEGY CALCULATIONS =====
 
