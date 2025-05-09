@@ -129,6 +129,17 @@ def run_optimizer_page():
     if 'sidebar_minimized' not in st.session_state:
         st.session_state.sidebar_minimized = False
     
+    # Add CSS to hide the sidebar completely when minimized
+    if st.session_state.sidebar_minimized:
+        hide_sidebar_style = """
+        <style>
+            [data-testid="stSidebar"] {
+                display: none;
+            }
+        </style>
+        """
+        st.markdown(hide_sidebar_style, unsafe_allow_html=True)
+    
     # Just run the optimized view directly
     run_optimizer_view()
 
@@ -394,10 +405,12 @@ def run_optimizer_view():
                     st.session_state.sidebar_minimized = True
                     st.rerun()
         else:
-            # Add button to show sidebar again
-            if st.button("⚙️ Show Options", key="show_options_button", use_container_width=False):
+            # Add button to show sidebar again with more prominent placement
+            st.markdown("<div style='position: fixed; top: 20px; left: 20px;'>", unsafe_allow_html=True)
+            if st.button("⚙️ Show Options", key="show_options_button"):
                 st.session_state.sidebar_minimized = False
                 st.rerun()
+            st.markdown("</div>", unsafe_allow_html=True)
                 
         # Display results
         if len(all_results) == 1:
