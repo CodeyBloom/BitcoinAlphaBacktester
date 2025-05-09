@@ -277,7 +277,14 @@ def run_optimizer_view():
             st.warning("Please select at least one strategy to view results.")
         else:
             with st.spinner(f"Loading optimization results for {selected_period} with {len(selected_strategies)} strategies..."):
+                # Store the selected period for reference by other components
+                st.session_state["current_time_period"] = selected_period
+                
                 all_results = {}
+                
+                # Log time period details for debugging
+                st.info(f"Loading data for time period: {selected_period} ({years} years)")
+                st.info(f"Date range: {start_date_str} to {end_date_str}")
                 
                 # Load results for each selected strategy
                 for strategy in selected_strategies:
@@ -292,9 +299,10 @@ def run_optimizer_view():
                     display_optimization_results(all_results[strategy], single_strategy=True, currency=currency)
                 elif len(all_results) > 1:
                     # Multi-strategy optimization - find most efficient strategy
+                    # Adjust weeks based on selected period when calculating efficiency
                     most_efficient_strategy = max(
                         all_results.items(),
-                        key=lambda x: x[1]["performance"]["final_btc"] / (x[1]["best_params"]["weekly_investment"] * 52)
+                        key=lambda x: x[1]["performance"]["final_btc"] / (x[1]["best_params"]["weekly_investment"] * 52 * years)
                     )[0]
                     
                     display_optimization_results(all_results, most_efficient_strategy, single_strategy=False, currency=currency)
@@ -322,10 +330,11 @@ def display_optimization_results(results, best_strategy_name=None, single_strate
         best_params = results["best_params"]
         best_performance = results["performance"]
         
-        # Calculate total investment
+        # Calculate total investment based on the selected time period
         weekly_investment = best_params.get("weekly_investment", 0)
-        # Assume 52 weeks for 1 year of investment
-        years = 1  # Default to 1 year
+        # Get the selected time period from session state or default to 1 year
+        selected_time_period = st.session_state.get("current_time_period", "1 Year")
+        years = time_periods.get(selected_time_period, 1)
         weeks = 52 * years
         total_investment = weekly_investment * weeks
         

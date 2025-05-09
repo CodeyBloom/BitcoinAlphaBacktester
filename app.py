@@ -30,41 +30,45 @@ from optimize_app import run_optimizer_page
 def ensure_optimization_data_exists():
     """Check if optimization data exists and generate it if necessary"""
     try:
-        # Import the necessary functions from scripts.generate_sample_optimizations
-        from scripts.generate_sample_optimizations import (
-            generate_sample_data_for_timeperiod,
-            TIME_PERIODS,
-            CURRENCIES
-        )
-        
-        # Check if the optimization directory exists
+        # Get required constants
         import os
-        from scripts.generate_sample_optimizations import OPTIMIZATION_DIR
+        from scripts.generate_optimizations_for_periods import OPTIMIZATION_DIR, TIME_PERIODS
         
+        # Make sure the optimization directory exists
         if not os.path.exists(OPTIMIZATION_DIR):
             os.makedirs(OPTIMIZATION_DIR)
         
+        # Define time periods and strategies
+        periods = {"1 Year": 1, "5 Years": 5, "10 Years": 10}
+        strategies = ["dca", "maco", "rsi", "volatility"]
+        currency = "AUD"  # Only use AUD as requested
+        
         # Check if we have at least some optimization files for each time period
-        for currency in CURRENCIES:
-            for years in TIME_PERIODS:
-                # Check for at least one strategy file for this time period
-                files_exist = False
-                for strategy in ["dca", "maco", "rsi", "volatility"]:
-                    today = datetime.date.today()
-                    start_date = today.replace(year=today.year - years)
-                    start_date_str = start_date.strftime("%d%m%Y")
-                    end_date_str = today.strftime("%d%m%Y")
-                    
-                    filename = f"{strategy}_{start_date_str}_{end_date_str}_{currency}.arrow"
-                    file_path = os.path.join(OPTIMIZATION_DIR, filename)
-                    
-                    if os.path.exists(file_path):
-                        files_exist = True
-                        break
+        missing_files = []
+        
+        for period_name, years in periods.items():
+            # Check for at least one strategy file for this time period
+            for strategy in strategies:
+                today = datetime.date.today()
+                start_date = today.replace(year=today.year - years)
+                start_date_str = start_date.strftime("%d%m%Y")
+                end_date_str = today.strftime("%d%m%Y")
                 
-                # If no files exist for this time period, generate them
-                if not files_exist:
-                    generate_sample_data_for_timeperiod(years, currency)
+                filename = f"{strategy}_{start_date_str}_{end_date_str}_{currency}.arrow"
+                file_path = os.path.join(OPTIMIZATION_DIR, filename)
+                
+                if not os.path.exists(file_path):
+                    missing_files.append((strategy, years))
+        
+        # If any time period is missing files, run the script to generate all optimization files
+        if missing_files:
+            st.info("Generating optimization data for all time periods...")
+            
+            # Import and run the function to generate optimization files for all periods
+            from scripts.generate_optimizations_for_periods import main as generate_optimizations
+            generate_optimizations()
+            
+            st.success("Optimization data generated successfully!")
                     
         return True
     except Exception as e:
