@@ -26,8 +26,16 @@ def format_date(date_obj):
     """Format date object as DDMMYYYY string"""
     return date_obj.strftime("%d%m%Y")
 
-def create_dca_optimization(start_date_str, end_date_str, currency):
+def create_dca_optimization(start_date_str=None, end_date_str=None, currency="AUD"):
     """Create sample DCA optimization results with all parameters needed to implement the strategy"""
+    # Generate dates if not provided
+    if start_date_str is None or end_date_str is None:
+        today = datetime.now()
+        end_date = today
+        start_date = end_date.replace(year=end_date.year - 5)  # Default to 5 years
+        start_date_str = format_date(start_date)
+        end_date_str = format_date(end_date)
+    
     # For DCA, optimize weekly investment amount, exchange, and day of week
     data = {
         "strategy": "dca",
@@ -47,9 +55,18 @@ def create_dca_optimization(start_date_str, end_date_str, currency):
     file_path = os.path.join(OPTIMIZATION_DIR, filename)
     df.write_ipc(file_path)
     print(f"Created {file_path}")
+    return file_path
 
-def create_maco_optimization(start_date_str, end_date_str, currency):
+def create_maco_optimization(start_date_str=None, end_date_str=None, currency="AUD"):
     """Create sample MACO optimization results with all parameters needed to implement the strategy"""
+    # Generate dates if not provided
+    if start_date_str is None or end_date_str is None:
+        today = datetime.now()
+        end_date = today
+        start_date = end_date.replace(year=end_date.year - 5)  # Default to 5 years
+        start_date_str = format_date(start_date)
+        end_date_str = format_date(end_date)
+        
     data = {
         "strategy": "maco",
         "param_exchange_id": "coinbase",
@@ -70,9 +87,18 @@ def create_maco_optimization(start_date_str, end_date_str, currency):
     file_path = os.path.join(OPTIMIZATION_DIR, filename)
     df.write_ipc(file_path)
     print(f"Created {file_path}")
+    return file_path
 
-def create_rsi_optimization(start_date_str, end_date_str, currency):
+def create_rsi_optimization(start_date_str=None, end_date_str=None, currency="AUD"):
     """Create sample RSI optimization results with all parameters needed to implement the strategy"""
+    # Generate dates if not provided
+    if start_date_str is None or end_date_str is None:
+        today = datetime.now()
+        end_date = today
+        start_date = end_date.replace(year=end_date.year - 5)  # Default to 5 years
+        start_date_str = format_date(start_date)
+        end_date_str = format_date(end_date)
+        
     data = {
         "strategy": "rsi",
         "param_exchange_id": "kraken",
@@ -94,9 +120,18 @@ def create_rsi_optimization(start_date_str, end_date_str, currency):
     file_path = os.path.join(OPTIMIZATION_DIR, filename)
     df.write_ipc(file_path)
     print(f"Created {file_path}")
+    return file_path
 
-def create_volatility_optimization(start_date_str, end_date_str, currency):
+def create_volatility_optimization(start_date_str=None, end_date_str=None, currency="AUD"):
     """Create sample volatility optimization results with all parameters needed to implement the strategy"""
+    # Generate dates if not provided
+    if start_date_str is None or end_date_str is None:
+        today = datetime.now()
+        end_date = today
+        start_date = end_date.replace(year=end_date.year - 5)  # Default to 5 years
+        start_date_str = format_date(start_date)
+        end_date_str = format_date(end_date)
+        
     data = {
         "strategy": "volatility",
         "param_exchange_id": "binance",
@@ -117,6 +152,7 @@ def create_volatility_optimization(start_date_str, end_date_str, currency):
     file_path = os.path.join(OPTIMIZATION_DIR, filename)
     df.write_ipc(file_path)
     print(f"Created {file_path}")
+    return file_path
 
 def generate_sample_data_for_timeperiod(years, currency):
     """Generate sample data for a specific time period"""
