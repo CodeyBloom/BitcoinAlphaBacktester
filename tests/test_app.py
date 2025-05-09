@@ -213,19 +213,31 @@ def mock_optimization_dir():
 
 def test_ensure_optimization_data_exists(monkeypatch, mock_optimization_dir):
     """Test the function to ensure optimization data exists"""
+    import streamlit as st
+    
     # Mock the optimization directory path
     monkeypatch.setattr("scripts.generate_optimizations_for_periods.OPTIMIZATION_DIR", 
                        os.path.join(mock_optimization_dir, "optimizations"))
     
-    # Mock the generate_optimizations function
-    monkeypatch.setattr("app.import_module", lambda _: None)
-    monkeypatch.setattr("app.subprocess.run", lambda *args, **kwargs: None)
+    # Mock the streamlit functions
+    monkeypatch.setattr(st, "info", lambda *args, **kwargs: None)
+    monkeypatch.setattr(st, "success", lambda *args, **kwargs: None)
+    monkeypatch.setattr(st, "error", lambda *args, **kwargs: None)
+    
+    # Mock the generate_optimizations function import
+    # This is a better approach than mocking import_module which isn't used
+    monkeypatch.setattr("scripts.generate_optimizations_for_periods.main", lambda: None)
+    
+    # Create a file so ensure_optimization_data_exists doesn't try to generate files
+    os.makedirs(os.path.join(mock_optimization_dir, "optimizations"), exist_ok=True)
+    with open(os.path.join(mock_optimization_dir, "optimizations", "dca_09052024_09052025_AUD.arrow"), "w") as f:
+        f.write("test")
     
     # Call the function
-    ensure_optimization_data_exists()
+    result = ensure_optimization_data_exists()
     
-    # Since we can't easily verify the function's behavior directly,
-    # we're mainly checking that it doesn't throw exceptions
+    # Verify the function returns True when it succeeds
+    assert result is True
 
 def test_get_strategy_parameters():
     """Test getting strategy parameters with selected strategy"""
