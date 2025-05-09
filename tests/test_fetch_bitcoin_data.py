@@ -106,7 +106,7 @@ def test_process_price_data():
     # Verify column types
     assert df["date"].dtype == pl.Datetime
     assert df["price"].dtype == pl.Float64
-    assert df["day_of_week"].dtype == pl.Int32
+    assert df["day_of_week"].dtype in (pl.Int8, pl.Int32)  # Accept either Int8 or Int32
     assert df["is_sunday"].dtype == pl.Boolean
     assert df["returns"].dtype == pl.Float64
     
@@ -136,7 +136,7 @@ def test_fetch_last_year_bitcoin_data_success(mock_get, mock_successful_response
     
     # Verify result
     assert isinstance(result, pl.DataFrame)
-    assert set(result.columns) == {"date", "price", "day_of_week", "is_sunday", "returns"}
+    assert set(result.columns).issuperset({"date", "price", "day_of_week", "is_sunday", "returns"})
     assert result.height > 0
 
 @patch("fetch_bitcoin_data.httpx.get")

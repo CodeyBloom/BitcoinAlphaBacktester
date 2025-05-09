@@ -143,26 +143,6 @@ def fetch_last_year_bitcoin_data(currency="AUD"):
                 print(f"Error fetching data: {response.status_code} - {response.text}")
                 retries += 1
                 time.sleep(5)
-                return None
-                
-        except Exception as e:
-            print(f"Exception while fetching data: {str(e)}")
-            retries += 1
-            time.sleep(5)
-    
-    return None
-                
-            elif response.status_code == 429:
-                # Rate limit hit, wait and retry
-                retry_after = int(response.headers.get("Retry-After", 60))
-                print(f"Rate limit hit, waiting for {retry_after} seconds...")
-                time.sleep(retry_after)
-                continue
-                
-            else:
-                print(f"Error fetching data: {response.status_code} - {response.text}")
-                retries += 1
-                time.sleep(5)
                 
         except Exception as e:
             print(f"Exception while fetching data: {str(e)}")
@@ -185,6 +165,8 @@ def simulate_historical_data(df, years_to_simulate=9):
     Returns:
         polars.DataFrame: DataFrame with simulated historical data
     """
+    import numpy as np
+    
     # First ensure we have a full year of data to work with
     if len(df) < 360:  # Allow some missing days
         print("Not enough data to simulate historical prices")
@@ -284,6 +266,4 @@ def main():
         print("Failed to fetch data")
 
 if __name__ == "__main__":
-    # Import numpy only when needed
-    import numpy as np
     main()
