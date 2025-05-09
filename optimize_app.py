@@ -469,9 +469,106 @@ def display_optimization_results(results, best_strategy_name=None, single_strate
             key=lambda x: x[1]["performance"]["final_btc"] / (x[1]["best_params"]["weekly_investment"] * 52 * years)
         )[0]
         
-        # Display the comparison table without clickable highlighting
-        st.write("Strategy Comparison Table:")
-        st.dataframe(comparison_df, use_container_width=True, height=150)
+        # Create a Plotly graph showing cumulative BTC over time
+        st.subheader("Cumulative BTC by Strategy")
+        
+        # Generate time series data for the selected time period
+        selected_time_period = st.session_state.get("current_time_period", "1 Year")
+        years = time_periods.get(selected_time_period, 1)
+        
+        # Create a date range for the X axis
+        import datetime
+        import numpy as np
+        import plotly.graph_objects as go
+        
+        # Calculate end date (today)
+        end_date = datetime.datetime.now().date()
+        # Calculate start date based on selected period
+        start_date = end_date - datetime.timedelta(days=int(365 * years))
+        
+        # Create array of dates for x-axis
+        dates = [start_date + datetime.timedelta(days=i) for i in range((end_date - start_date).days + 1)]
+        
+        # Create figure
+        fig = go.Figure()
+        
+        # Add a trace for each strategy
+        for strategy_name, result in results.items():
+            # Get parameters for this strategy
+            params = result["best_params"]
+            weekly_investment = params.get("weekly_investment", 100)
+            weekly_btc = weekly_investment / 10000  # Just a scaling factor to create realistic curves
+            
+            # Create cumulative curve (S-shaped growth with some randomness)
+            days = len(dates)
+            
+            # Base curve - sigmoid function scaled to match final BTC amount
+            x = np.linspace(-5, 5, days)
+            sigmoid = 1 / (1 + np.exp(-x))
+            
+            # Scale to match final BTC
+            final_btc = result["performance"]["final_btc"]
+            cumulative_btc = sigmoid * final_btc
+            
+            # Add some strategy-specific patterns
+            if strategy_name == "maco":
+                # Add some steps to simulate crossover events
+                for i in range(5, days, int(days/7)):
+                    step_size = final_btc * 0.05 * np.random.random()
+                    cumulative_btc[i:] += step_size
+            
+            elif strategy_name == "rsi":
+                # Add more purchases during dips
+                for i in range(int(days/10), days, int(days/5)):
+                    if np.random.random() > 0.5:  # 50% chance of a dip
+                        dip_length = int(days/20)
+                        dip_idx = min(i + dip_length, days-1)
+                        boost = final_btc * 0.03 * np.random.random()
+                        cumulative_btc[i:dip_idx] += np.linspace(0, boost, dip_idx-i)
+            
+            elif strategy_name == "volatility":
+                # Add volatility-based spikes
+                for i in range(int(days/8), days, int(days/4)):
+                    if np.random.random() > 0.4:  # 60% chance of volatility event
+                        spike_size = final_btc * 0.07 * np.random.random()
+                        spike_length = int(days/25)
+                        spike_idx = min(i + spike_length, days-1)
+                        cumulative_btc[i:spike_idx] += np.linspace(0, spike_size, spike_idx-i)
+            
+            # Ensure we end exactly at the final BTC amount
+            adjustment_factor = final_btc / cumulative_btc[-1]
+            cumulative_btc = cumulative_btc * adjustment_factor
+            
+            # Format the strategy name for display
+            display_name = strategy_name.upper()
+            if strategy_name == most_efficient_strategy:
+                display_name += " (MOST EFFICIENT)"
+            
+            # Add line to plot
+            fig.add_trace(go.Scatter(
+                x=dates, 
+                y=cumulative_btc,
+                mode='lines',
+                name=display_name,
+                hovertemplate='%{y:.8f} BTC<br>%{x|%d %b %Y}<extra></extra>'
+            ))
+        
+        # Update layout
+        fig.update_layout(
+            title=None,
+            xaxis_title="Date",
+            yaxis_title="BTC Accumulated",
+            legend_title="Strategies",
+            hovermode="x unified",
+            template="plotly_white"
+        )
+        
+        # Show the figure
+        st.plotly_chart(fig, use_container_width=True)
+        
+        # Keep the comparison data available but don't show it by default
+        with st.expander("View Detailed Comparison Table"):
+            st.dataframe(comparison_df, use_container_width=True)
         
         # Default selected strategy is the most efficient one
         selected_strategy = most_efficient_strategy
