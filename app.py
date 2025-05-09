@@ -755,7 +755,7 @@ else:  # "Backtest Strategies"
                     st.plotly_chart(efficiency_fig, use_container_width=True)
                     
                     # Add a tabbed interface for other metrics
-                    tab1, tab2, tab3 = st.tabs(["Cumulative BTC", "Maximum Drawdown", "Sortino Ratio"])
+                    tab1, tab2 = st.tabs(["Cumulative BTC", "Maximum Drawdown"])
                     
                     with tab1:
                         cumulative_btc_fig = plot_cumulative_bitcoin(strategy_results)
@@ -764,10 +764,6 @@ else:  # "Backtest Strategies"
                     with tab2:
                         max_drawdown_fig = plot_max_drawdown(strategy_results)
                         st.plotly_chart(max_drawdown_fig, use_container_width=True)
-                    
-                    with tab3:
-                        sortino_fig = plot_sortino_ratio(performance_metrics)
-                        st.plotly_chart(sortino_fig, use_container_width=True)
                     
                     # Display final comparisons against DCA
                     st.header("Strategy Comparison Against DCA Baseline")

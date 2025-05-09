@@ -22,15 +22,19 @@ def sample_data():
     start_date = datetime(2023, 1, 1)
     dates = [start_date + timedelta(days=i) for i in range(30)]
     
-    # Create sample data for two strategies
+    # Create sample data for two strategies with investment data for efficiency testing
     dca_data = pl.DataFrame({
         "date": dates,
-        "cumulative_btc": [0.01 * i for i in range(30)]
+        "cumulative_btc": [0.01 * i for i in range(30)],
+        "investment": [100.0 for _ in range(30)],
+        "cumulative_investment": [100.0 * (i + 1) for i in range(30)]
     })
     
     maco_data = pl.DataFrame({
         "date": dates,
-        "cumulative_btc": [0.009 * i * (i % 3 + 1) for i in range(30)]
+        "cumulative_btc": [0.009 * i * (i % 3 + 1) for i in range(30)],
+        "investment": [100.0 for _ in range(30)],
+        "cumulative_investment": [100.0 * (i + 1) for i in range(30)]
     })
     
     # Return as a dictionary of strategy results
@@ -62,7 +66,7 @@ def performance_metrics():
 
 def test_plot_cumulative_bitcoin(sample_data):
     """Test plotting cumulative Bitcoin holdings"""
-    # Generate the plot
+    # Generate the plot - default mode (raw BTC)
     fig = plot_cumulative_bitcoin(sample_data)
     
     # Check that the figure was created
@@ -84,6 +88,30 @@ def test_plot_cumulative_bitcoin(sample_data):
     assert "Cumulative Bitcoin Holdings" in fig.layout.title.text
     assert "Date" in fig.layout.xaxis.title.text
     assert "Bitcoin Holdings" in fig.layout.yaxis.title.text
+    
+    # Test efficiency mode
+    currency = "USD"
+    fig_efficiency = plot_cumulative_bitcoin(sample_data, use_efficiency=True, currency=currency)
+    
+    # Check that the figure was created
+    assert isinstance(fig_efficiency, go.Figure)
+    
+    # Get trace names from efficiency plot
+    efficiency_traces = fig_efficiency.data
+    efficiency_trace_names = [trace.name for trace in efficiency_traces]
+    
+    # Check that there's one trace per strategy
+    assert len(efficiency_trace_names) == len(strategy_names)
+    
+    # Verify trace names match strategy names
+    for name in strategy_names:
+        assert name in efficiency_trace_names
+    
+    # Check the layout has appropriate titles for efficiency mode
+    assert "Strategy Efficiency" in fig_efficiency.layout.title.text
+    assert "Date" in fig_efficiency.layout.xaxis.title.text
+    assert f"BTC per" in fig_efficiency.layout.yaxis.title.text
+    assert currency in fig_efficiency.layout.yaxis.title.text
 
 def test_plot_max_drawdown(sample_data):
     """Test plotting maximum drawdown over time"""
