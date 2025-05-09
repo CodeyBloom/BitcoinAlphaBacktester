@@ -13,7 +13,8 @@ from strategies import (
     value_averaging_strategy,
     maco_strategy,
     rsi_strategy,
-    volatility_strategy
+    volatility_strategy,
+    xgboost_strategy
 )
 
 @pytest.fixture

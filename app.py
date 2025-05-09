@@ -614,6 +614,9 @@ else:  # "Backtest Strategies"
         
         ### Volatility-Based Strategy
         Increases investment during periods of high volatility to capture potential upswings.
+        
+        ### XGBoost ML Strategy
+        Uses machine learning to predict future returns and adjust investment amounts accordingly. The model is trained on historical price data and technical indicators.
         """)
 
     with st.expander("Performance Metrics Explained"):

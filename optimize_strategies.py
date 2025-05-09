@@ -24,7 +24,8 @@ from strategies import (
     value_averaging_strategy,
     maco_strategy,
     rsi_strategy,
-    volatility_strategy
+    volatility_strategy,
+    xgboost_strategy
 )
 from fee_models import load_exchange_profiles
 from metrics import calculate_max_drawdown, calculate_sortino_ratio
@@ -290,6 +291,109 @@ def optimize_rsi_strategy(start_date, end_date, currency="AUD", n_calls=50):
             "rsi_period": best_rsi_period,
             "oversold_threshold": best_oversold_threshold,
             "overbought_threshold": best_overbought_threshold
+        },
+        "performance": {
+            "final_btc": best_btc
+        },
+        "result": result
+    }
+
+
+def optimize_xgboost_strategy(start_date, end_date, currency="AUD", n_calls=50):
+    """
+    Optimize the XGBoost ML strategy parameters and exchange selection.
+    
+    Args:
+        start_date (str): Start date in DD-MM-YYYY format
+        end_date (str): End date in DD-MM-YYYY format
+        currency (str): Currency to use for optimization
+        n_calls (int): Number of optimization iterations
+        
+    Returns:
+        dict: Optimized parameters and performance metrics
+    """
+    # Load available exchanges
+    exchange_profiles = load_exchange_profiles()
+    exchanges = list(exchange_profiles.keys())
+    
+    # Define search space - for XGBoost we optimize prediction horizon, training days, and investment factors
+    space = [
+        Categorical(exchanges, name='exchange_id'),
+        Categorical([True, False], name='use_discount'),
+        Real(10, 500, name='weekly_investment'),
+        Integer(1, 14, name='prediction_horizon'),
+        Integer(60, 500, name='training_days', prior='log-uniform'),
+        Real(1.0, 3.0, name='max_investment_factor'),
+        Real(0.1, 1.0, name='min_investment_factor')
+    ]
+    
+    # Define objective function
+    @use_named_args(space)
+    def objective(exchange_id, use_discount, weekly_investment, 
+                 prediction_horizon, training_days, max_investment_factor, min_investment_factor):
+        # Fetch data
+        df = fetch_bitcoin_price_data(start_date, end_date, currency)
+        
+        # Skip invalid combinations
+        if min_investment_factor >= max_investment_factor:
+            return 0  # Penalty for invalid parameters
+        
+        # Run XGBoost strategy with these parameters
+        result = xgboost_strategy(
+            df.clone(), weekly_investment, prediction_horizon, 
+            training_days, max_investment_factor, min_investment_factor,
+            exchange_id, use_discount
+        )
+        
+        # Calculate performance metrics
+        final_btc = result["cumulative_btc"].tail(1).item()
+        
+        # Our objective is to maximize BTC holdings
+        # Since skopt minimizes, return negative of BTC amount
+        return -final_btc
+    
+    # Run optimization
+    result = gp_minimize(
+        objective,
+        space,
+        n_calls=n_calls,
+        random_state=42,
+        verbose=True
+    )
+    
+    # Get best parameters
+    # Handle potential None result
+    if result is not None and hasattr(result, 'x') and hasattr(result, 'fun'):
+        best_exchange = result.x[0]
+        best_use_discount = result.x[1]
+        best_weekly_investment = result.x[2]
+        best_prediction_horizon = result.x[3]
+        best_training_days = result.x[4]
+        best_max_investment_factor = result.x[5]
+        best_min_investment_factor = result.x[6]
+        best_btc = -result.fun
+    else:
+        # Default values if optimization fails
+        best_exchange = exchanges[0]
+        best_use_discount = False
+        best_weekly_investment = 100
+        best_prediction_horizon = 7
+        best_training_days = 365
+        best_max_investment_factor = 2.0
+        best_min_investment_factor = 0.5
+        best_btc = 0
+    
+    # Return optimized parameters and performance
+    return {
+        "strategy": "xgboost",
+        "best_params": {
+            "exchange_id": best_exchange,
+            "use_discount": best_use_discount,
+            "weekly_investment": best_weekly_investment,
+            "prediction_horizon": best_prediction_horizon,
+            "training_days": best_training_days,
+            "max_investment_factor": best_max_investment_factor,
+            "min_investment_factor": best_min_investment_factor
         },
         "performance": {
             "final_btc": best_btc
