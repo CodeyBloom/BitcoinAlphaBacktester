@@ -108,6 +108,20 @@ def run_selected_strategies(df, strategy_selections, strategy_params,
             vol_threshold
         )
     
+    # Run XGBoost ML if selected
+    if strategy_selections.get("xgboost_ml", False):
+        xgboost_params = strategy_params.get("xgboost_ml", {})
+        training_window = xgboost_params.get("training_window", 14)
+        prediction_threshold = xgboost_params.get("prediction_threshold", 0.55)
+        features = xgboost_params.get("features", ["returns", "price"])
+        results["XGBoost ML"] = xgboost_ml_strategy(
+            df.clone(), 
+            weekly_investment,
+            training_window=training_window,
+            prediction_threshold=prediction_threshold,
+            features=features
+        )
+    
     # Calculate metrics for each strategy
     metrics = {}
     for strategy_name, strategy_df in results.items():
@@ -210,6 +224,20 @@ def run_strategies_with_parameters(df, strategies_with_params):
                 vol_window,
                 vol_threshold
             )
+            
+        elif strategy_id == "xgboost_ml":
+            weekly_investment = params.get("weekly_investment", 100.0)
+            training_window = params.get("training_window", 14)
+            prediction_threshold = params.get("prediction_threshold", 0.55)
+            features = params.get("features", ["returns", "price"])
+            
+            results[strategy_name] = xgboost_ml_strategy(
+                df.clone(), 
+                weekly_investment,
+                training_window=training_window,
+                prediction_threshold=prediction_threshold,
+                features=features
+            )
     
     # Calculate performance metrics
     metrics = {}
@@ -308,7 +336,7 @@ def get_optimization_files(period=None, strategies=None, currency="AUD"):
     
     # Default values
     if strategies is None:
-        strategies = ["dca", "maco", "rsi", "volatility"]
+        strategies = ["dca", "maco", "rsi", "volatility", "xgboost_ml"]
     
     # Get today's date
     today = datetime.date.today()
@@ -357,7 +385,7 @@ def ensure_optimization_data_exists():
         
         # Define time periods and strategies
         periods = {"1 Year": 1, "5 Years": 5, "10 Years": 10}
-        strategies = ["dca", "maco", "rsi", "volatility"]
+        strategies = ["dca", "maco", "rsi", "volatility", "xgboost_ml"]
         currency = "AUD"  # Only use AUD as requested
         
         # Check if we have at least some optimization files for each time period
@@ -502,6 +530,7 @@ else:  # "Backtest Strategies"
     use_maco = st.sidebar.checkbox("Moving Average Crossover", value=False)
     use_rsi = st.sidebar.checkbox("RSI-Based Strategy", value=False)
     use_volatility = st.sidebar.checkbox("Volatility-Based Strategy", value=False)
+    use_xgboost_ml = st.sidebar.checkbox("XGBoost ML Strategy", value=False)
 
     # Strategy parameters (only show if strategy is selected)
     strategy_params = {}
@@ -537,6 +566,14 @@ else:  # "Backtest Strategies"
             "vol_window": st.sidebar.slider("Volatility Window (days)", 5, 30, 14),
             "vol_threshold": st.sidebar.slider("Volatility Threshold Multiplier", 0.5, 3.0, 1.5, 0.1)
         }
+        
+    # XGBoost ML parameters
+    if use_xgboost_ml:
+        st.sidebar.subheader("XGBoost ML Strategy Parameters")
+        strategy_params["xgboost_ml"] = {
+            "training_window": st.sidebar.slider("Training Window (days)", 7, 30, 14),
+            "prediction_threshold": st.sidebar.slider("Prediction Threshold", 0.5, 0.8, 0.55, 0.01)
+        }
 
     # We've removed Lump Sum and Buy the Dip parameters in the refactored version
 
@@ -560,6 +597,9 @@ else:  # "Backtest Strategies"
         
         ### Volatility-Based Strategy
         Increases investment during periods of high volatility to capture potential upswings.
+        
+        ### XGBoost ML Strategy
+        Uses machine learning to predict favorable entry points based on historical price patterns and features.
         """)
 
     with st.expander("Performance Metrics Explained"):
@@ -610,7 +650,8 @@ else:  # "Backtest Strategies"
                         "value_avg": use_value_avg,
                         "maco": use_maco,
                         "rsi": use_rsi,
-                        "volatility": use_volatility
+                        "volatility": use_volatility,
+                        "xgboost_ml": use_xgboost_ml
                     }
                     
                     # Run the strategies using the pure function
