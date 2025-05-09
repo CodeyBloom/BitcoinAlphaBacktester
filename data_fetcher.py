@@ -246,6 +246,7 @@ def fetch_from_api(start_date, end_date, currency="AUD"):
 def fetch_bitcoin_price_data(start_date_str, end_date_str, currency="AUD"):
     """
     Fetch Bitcoin historical price data from local Arrow file or CoinGecko API.
+    Prioritizes using cached data and only falls back to API as a last resort.
     
     Args:
         start_date_str (str): Start date in DD-MM-YYYY format
@@ -264,12 +265,61 @@ def fetch_bitcoin_price_data(start_date_str, end_date_str, currency="AUD"):
     df = read_from_arrow_file(arrow_path)
     
     if df is not None:
+        print(f"Found local data file at {arrow_path}")
         # Filter to requested date range
         filtered_df = filter_dataframe_by_date_range(df, start_date, end_date)
         
-        if len(filtered_df) > 0:
-            print(f"Using local data with {len(filtered_df)} days in the requested date range")
+        # Check if we have enough data for the requested date range
+        # Let's consider 80% coverage as sufficient
+        date_range_days = (end_date - start_date).days + 1
+        data_coverage = len(filtered_df) / date_range_days if date_range_days > 0 else 0
+        
+        if len(filtered_df) > 0 and data_coverage >= 0.8:
+            print(f"Using local data with {len(filtered_df)} days in the requested date range ({data_coverage:.0%} coverage)")
+            
+            # Fill any missing required columns
+            if "day_of_week" not in filtered_df.columns:
+                filtered_df = calculate_day_of_week(filtered_df)
+            if "is_sunday" not in filtered_df.columns:
+                filtered_df = flag_sundays(filtered_df)
+            if "returns" not in filtered_df.columns:
+                filtered_df = calculate_returns(filtered_df)
+            
+            # Ensure row index exists
+            filtered_df = ensure_row_index(filtered_df)
+            
             return filtered_df
     
-    # If local data not available or insufficient, fetch from API
-    return fetch_from_api(start_date, end_date, currency)
+    # If we reach here, either:
+    # 1. Local data file doesn't exist
+    # 2. Local data doesn't have enough coverage for the requested date range
+    # So we'll fetch from API as a last resort
+    print(f"Local data insufficient, falling back to API...")
+    api_df = fetch_from_api(start_date, end_date, currency)
+    
+    # If we got data from the API, save it to arrow file for future use
+    if api_df is not None and len(api_df) > 0:
+        try:
+            if os.path.exists(arrow_path):
+                # If arrow file exists, update it with new data
+                existing_df = read_from_arrow_file(arrow_path)
+                if existing_df is not None:
+                    # Use concat to combine and deduplicate by date
+                    combined_df = pl.concat([existing_df, api_df])
+                    combined_df = combined_df.unique(subset=["date"])
+                    combined_df = combined_df.sort("date")
+                    combined_df.write_ipc(arrow_path)
+                    print(f"Updated local cache with {len(api_df)} days of new data")
+                else:
+                    # Just save the API data if we couldn't load the existing file
+                    api_df.write_ipc(arrow_path)
+                    print(f"Saved {len(api_df)} days of data to local cache")
+            else:
+                # Create a new arrow file
+                os.makedirs(os.path.dirname(arrow_path), exist_ok=True)
+                api_df.write_ipc(arrow_path)
+                print(f"Created new local cache with {len(api_df)} days of data")
+        except Exception as e:
+            print(f"Error updating local cache: {str(e)}")
+    
+    return api_df

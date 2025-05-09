@@ -36,20 +36,23 @@ def sample_strategy_results():
     dates = [start_date + timedelta(days=i) for i in range((end_date - start_date).days + 1)]
     
     # Create price data with a realistic pattern (including a crash and recovery)
-    prices = [10000]
+    # Use numpy array for consistent typing
+    prices = np.zeros(len(dates))
+    prices[0] = 10000
+    
     for i in range(1, len(dates)):
         # Add some realistic price movements
-        change = prices[-1] * np.random.normal(0.001, 0.03)  # Small drift, some volatility
+        change = prices[i-1] * np.random.normal(0.001, 0.03)  # Small drift, some volatility
         # Add a crash in the middle
         if i == len(dates) // 3:
-            change = -prices[-1] * 0.2  # 20% crash
+            change = -prices[i-1] * 0.2  # 20% crash
         # Add a rally near the end
         if i == int(len(dates) * 0.7):
-            change = prices[-1] * 0.15  # 15% rally
-        new_price = prices[-1] + change
+            change = prices[i-1] * 0.15  # 15% rally
+        new_price = prices[i-1] + change
         if new_price < 1000:
             new_price = 1000.0  # Ensure price doesn't go too low
-        prices.append(float(new_price))
+        prices[i] = new_price
     
     # Create test data frames for DCA and another strategy
     dca_df = pl.DataFrame({

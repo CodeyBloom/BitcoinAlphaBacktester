@@ -21,6 +21,7 @@ def run_friendly_dashboard(strategy_results, performance_metrics, investment_cur
         performance_metrics (dict): Dictionary of strategy performance metrics
         investment_currency (str): Currency code
     """
+    # Simple empty checks
     if not strategy_results or not performance_metrics:
         st.info("Run a backtest to see results.")
         return
@@ -29,7 +30,7 @@ def run_friendly_dashboard(strategy_results, performance_metrics, investment_cur
     dca_df = strategy_results.get("DCA (Baseline)")
     dca_metrics = performance_metrics.get("DCA (Baseline)")
     
-    if not dca_df or not dca_metrics:
+    if dca_df is None or dca_metrics is None:
         st.error("DCA (Baseline) results not found.")
         return
     
@@ -59,8 +60,11 @@ def run_friendly_dashboard(strategy_results, performance_metrics, investment_cur
     st.header("📊 What Happened")
     
     # Create a price chart with strategy buy points
-    fig = create_simple_timeline(strategy_results, performance_metrics, best_strategy)
-    st.plotly_chart(fig, use_container_width=True)
+    try:
+        fig = create_simple_timeline(strategy_results, performance_metrics, best_strategy)
+        st.plotly_chart(fig, use_container_width=True)
+    except Exception as e:
+        st.error(f"Error creating timeline visualization: {str(e)}")
     
     # Create "Worth the Effort?" card
     st.header("⚖️ Was It Worth the Effort?")
@@ -157,7 +161,10 @@ def run_friendly_dashboard(strategy_results, performance_metrics, investment_cur
     
     # Show implementation steps for the best strategy
     if best_strategy in strategy_results:
-        display_implementation_steps(best_strategy, strategy_results[best_strategy])
+        try:
+            display_implementation_steps(best_strategy, strategy_results[best_strategy])
+        except Exception as e:
+            st.error(f"Error displaying implementation steps: {str(e)}")
     
     # Disclaimer
     st.caption("""
@@ -212,27 +219,25 @@ def create_simple_timeline(strategy_results, performance_metrics, best_strategy=
         if strategy_name == "Price Data":
             continue
         
-        # Get strategy data
+        # Get strategy data - convert to NumPy for safer operations
         strategy_dates = df["date"].to_numpy()
         investments = df["investment"].to_numpy()
         cumulative_btc = df["cumulative_btc"].to_numpy()
         
-        # Only plot points where investment was made
-        # Use element-wise comparison for NumPy arrays
-        buy_mask = np.greater(investments, 0)  
-        buy_dates = strategy_dates[buy_mask]
-        
-        # Add buy points if we have valid buy points
-        if len(buy_dates) > 0:
-            # Calculate necessary values for visualization
-            buy_prices = prices[buy_mask]
+        # Plot the buy points if we have them
+        buy_points_idx = np.where(investments > 0)[0]
+        if len(buy_points_idx) > 0:
+            buy_dates = strategy_dates[buy_points_idx]
+            buy_prices = prices[buy_points_idx]
             
-            # Prevent division by zero if all investments are the same
-            max_investment = investments[buy_mask].max()
-            if max_investment > 0:
-                buy_sizes = investments[buy_mask] / max_investment * 15 + 5
+            # Calculate marker sizes proportionally
+            max_inv = np.max(investments[buy_points_idx])
+            if max_inv > 0:
+                buy_sizes = (investments[buy_points_idx] / max_inv) * 15 + 5
             else:
-                buy_sizes = np.full_like(investments[buy_mask], 10.0)
+                buy_sizes = np.ones(len(buy_points_idx)) * 10  # Default size
+            
+            # Add buy points
             fig.add_trace(
                 go.Scatter(
                     x=buy_dates,
@@ -295,8 +300,9 @@ def display_implementation_steps(strategy_name, strategy_df):
     """
     # Analyze the strategy behavior to inform implementation steps
     investments = strategy_df["investment"].to_numpy()
-    # Use element-wise comparison for NumPy arrays
-    non_zero_mask = np.greater(investments, 0)
+    
+    # Find non-zero investments using numpy instead of direct comparison
+    non_zero_mask = np.where(investments > 0)[0]
     non_zero_investments = investments[non_zero_mask]
     
     if len(non_zero_investments) == 0:
