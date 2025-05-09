@@ -25,8 +25,13 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
       
-      - name: Fetch latest Bitcoin data
-        run: python scripts/update_bitcoin_data.py
+      - name: Fetch 10 years of Bitcoin data
+        run: python scripts/fetch_10yr_bitcoin_data.py --currency AUD --years 10 --output data/bitcoin_prices.arrow
+        continue-on-error: true  # Continue even if rate limiting occurs
+      
+      - name: Fetch alternative currency data (USD)
+        run: python scripts/fetch_10yr_bitcoin_data.py --currency USD --years 10 --output data/bitcoin_prices_usd.arrow
+        continue-on-error: true  # Continue even if rate limiting occurs
       
       - name: Run optimizations for predefined time periods
         run: python scripts/run_all_optimizations.py
