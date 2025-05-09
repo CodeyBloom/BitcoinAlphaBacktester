@@ -402,15 +402,9 @@ def display_optimization_results(results, best_strategy_name=None, single_strate
             key=lambda x: x[1]["performance"]["final_btc"] / (x[1]["best_params"]["weekly_investment"] * 52)
         )[0]
         
-        # Highlight most efficient strategy in the table
-        def highlight_most_efficient(row):
-            if row["Strategy"].lower() == most_efficient_strategy:
-                return ['background-color: #d4f1d4'] * len(row)
-            return [''] * len(row)
-        
-        styled_df = comparison_df.style.apply(highlight_most_efficient, axis=1)
-        st.write("Click on a strategy in the table to see its details:")
-        selection = st.dataframe(styled_df, use_container_width=True, height=150)
+        # Display the comparison table without clickable highlighting
+        st.write("Strategy Comparison Table:")
+        st.dataframe(comparison_df, use_container_width=True, height=150)
         
         # Default selected strategy is the most efficient one
         selected_strategy = most_efficient_strategy
