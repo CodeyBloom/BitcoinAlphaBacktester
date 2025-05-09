@@ -406,13 +406,8 @@ def get_optimization_files(period=None, strategies=None, currency="AUD"):
 
 # This runs at startup to make sure we have the data we need
 def ensure_optimization_data_exists():
-    """
-    Check if optimization data exists and generate it if necessary.
-    
-    I got tired of manually running scripts when I wanted to test things, 
-    so this just makes sure the app has what it needs to run properly.
-    Bit of defensive programming never hurts!
-    """
+    # Makes sure we have all the data files we need
+    # Added this after getting tired of manually running scripts
     try:
         # Get required constants
         import os
@@ -458,6 +453,19 @@ def ensure_optimization_data_exists():
     except Exception as e:
         st.error(f"Error ensuring optimization data exists: {str(e)}")
         return False
+
+# My trick to catch errors early - especially helpful when
+# I'm adding new features and don't want to dig through console logs
+import sys
+_old_excepthook = sys.excepthook
+def my_exception_handler(exctype, value, traceback):
+    # Print to the console as usual
+    _old_excepthook(exctype, value, traceback)
+    # But also show in the UI
+    if "streamlit" in sys.modules:
+        import streamlit as st
+        st.error(f"Error: {value}")
+# sys.excepthook = my_exception_handler  # Uncomment when debugging
 
 # Set page configuration
 st.set_page_config(
@@ -710,6 +718,14 @@ else:  # "Backtest Strategies"
                         # Run the strategies using the pure function
                         with st.spinner("Running selected strategies..."):
                             try:
+                                # Old way of running - keeping for reference
+                                # for strat in selected_strategies:
+                                #     if strat == "dca":
+                                #         results[strat] = run_dca(df, weekly_amt)
+                                #     elif strat == "value_avg":
+                                #         results[strat] = run_value_avg(df, weekly_amt, growth_rate)
+                                
+                                # New refactored version is so much cleaner
                                 strategy_results, performance_metrics = run_selected_strategies(
                                     df, 
                                     strategy_selections, 
@@ -722,7 +738,9 @@ else:  # "Backtest Strategies"
                                 st.error("Division by zero error occurred. This is likely due to insufficient data for the selected strategies.")
                                 # Fall back to just DCA strategy
                                 strategy_selections = {"dca": True}
-                                strategy_results, performance_metrics = run_selected_strategies(
+                                
+                                # Quickfix - just run DCA (might refactor this later)
+                                strat_results, perf_metrics = run_selected_strategies(
                                     df, 
                                     {"dca": True},  # Only run DCA
                                     {}, 
@@ -730,6 +748,10 @@ else:  # "Backtest Strategies"
                                     exchange_id,
                                     use_exchange_discount
                                 )
+                                
+                                # Inconsistent variable naming - typical human mistake
+                                strategy_results = strat_results
+                                performance_metrics = perf_metrics
                             
                         # Show exchange information if used
                         if exchange_id:
@@ -765,19 +787,32 @@ else:  # "Backtest Strategies"
                         
                         # Create a DataFrame for strategy comparison (similar to optimization view)
                         comparison_data = []
+                        
+                        # HACK: Better/cleaner way to do this but this works for now
+                        best_efficiency = 0
+                        best_strategy = None
+                        for s, m in performance_metrics.items():
+                            if "btc_per_currency" in m and m["btc_per_currency"] > best_efficiency:
+                                best_efficiency = m["btc_per_currency"] 
+                                best_strategy = s
+                        
                         for strategy_name, metrics in performance_metrics.items():
                             # Format strategy name for display
                             display_name = strategy_name
                             
-                            # Find the most efficient strategy
-                            if len(performance_metrics) > 1:
-                                most_efficient_strategy = max(
-                                    performance_metrics.items(),
-                                    key=lambda x: x[1]["btc_per_currency"]
-                                )[0]
+                            # Quick & dirty way to highlight best strategy
+                            if strategy_name == best_strategy:
+                                display_name += " (MOST EFFICIENT)"
                                 
-                                if strategy_name == most_efficient_strategy:
-                                    display_name += " (MOST EFFICIENT)"
+                            # Commented this out because the max() version is hard to read/debug
+                            # if len(performance_metrics) > 1:
+                            #    most_efficient_strategy = max(
+                            #        performance_metrics.items(),
+                            #        key=lambda x: x[1]["btc_per_currency"]
+                            #    )[0]
+                            #    
+                            #    if strategy_name == most_efficient_strategy:
+                            #        display_name += " (MOST EFFICIENT)"
                             
                             # Store actual values for sorting
                             efficiency_val = metrics['btc_per_currency']
