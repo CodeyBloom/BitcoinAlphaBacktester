@@ -88,9 +88,28 @@ jobs:
           git diff --staged --quiet || git commit -m "Update Bitcoin data and optimization results"
           git push
         
-      - name: Verification summary
+      - name: Verify data integrity
         run: |
-          echo "Bitcoin data update complete"
-          ls -la data/
-          echo "Optimization files:"
-          ls -la data/optimizations/ | grep -E "dca|maco|rsi|volatility"
+          echo "::group::Data Integrity Verification"
+          python scripts/verify_data_integrity.py --output data/last_verification.json
+          echo "::endgroup::"
+          
+      - name: Commit verification results
+        run: |
+          git config --local user.email "actions@github.com"
+          git config --local user.name "GitHub Actions"
+          git add data/last_verification.json
+          git diff --staged --quiet || git commit -m "Add data verification results" && git push
+          
+      - name: Create verification summary
+        if: always()
+        run: |
+          echo "::group::Verification Summary"
+          echo "Bitcoin data update process complete"
+          echo "Price data file:"
+          ls -la data/bitcoin_prices.arrow || echo "Missing price data file!"
+          echo "Optimization files count:"
+          find data/optimizations -name "*.arrow" | wc -l
+          echo "Recent verification results:"
+          cat data/last_verification.json | grep -E "overall_valid|valid_count|missing_count" || echo "No verification results available"
+          echo "::endgroup::"

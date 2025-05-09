@@ -1,0 +1,28 @@
+{
+  "timestamp": "2025-05-09T22:01:28.045957",
+  "overall_valid": true,
+  "bitcoin_data": {
+    "valid": true,
+    "issues": [],
+    "stats": {
+      "num_days": 3654,
+      "date_range": "2015-05-09 to 2025-05-09",
+      "days_since_last_update": 0,
+      "years_covered": 10.001368925393566,
+      "min_price": 280.0,
+      "max_price": 169368.01,
+      "avg_price": 34205.91541598248
+    }
+  },
+  "optimization_files": {
+    "valid": true,
+    "issues": [],
+    "stats": {
+      "valid_count": 15,
+      "missing_count": 0,
+      "invalid_count": 0,
+      "missing_files": [],
+      "invalid_files": []
+    }
+  }
+}
