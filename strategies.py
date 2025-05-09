@@ -12,7 +12,8 @@ from domain import (
     apply_value_averaging_strategy,
     apply_maco_strategy,
     apply_rsi_strategy,
-    apply_volatility_strategy
+    apply_volatility_strategy,
+    apply_xgboost_ml_strategy
 )
 
 def dca_strategy(df, weekly_investment, exchange_id=None, use_discount=False):

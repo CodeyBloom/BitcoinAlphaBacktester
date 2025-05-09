@@ -803,3 +803,194 @@ def apply_volatility_strategy(df, weekly_investment, vol_window=14, vol_threshol
     ])
     
     return df
+def prepare_features_for_ml(df, features, target_col="returns", target_horizon=1):
+    """
+    Pure function to prepare features for ML training and prediction.
+    
+    Args:
+        df (polars.DataFrame): Price data with various columns
+        features (list): List of column names to use as features
+        target_col (str): Column to use for target values
+        target_horizon (int): Number of days ahead to predict
+        
+    Returns:
+        tuple: (X, y) where X is feature array and y is target array
+    """
+    # Create a copy of the dataframe (immutability principle)
+    df = df.clone()
+    
+    # Create target values (future returns)
+    if target_horizon > 0:
+        target = df[target_col].shift(-target_horizon)
+        # Convert to binary classification: 1 for positive return, 0 for negative
+        target = np.where(target > 0, 1, 0)
+    else:
+        target = df[target_col]
+    
+    # Extract features
+    feature_data = df.select(features).to_numpy()
+    
+    # Remove rows with NaN values
+    valid_indices = ~np.isnan(target) & ~np.any(np.isnan(feature_data), axis=1)
+    X = feature_data[valid_indices]
+    y = target[valid_indices]
+    
+    return X, y
+
+def apply_xgboost_ml_strategy(df, weekly_investment, training_window=14, prediction_threshold=0.55, features=None):
+    """
+    Apply XGBoost ML strategy to price data.
+    
+    Args:
+        df (polars.DataFrame): Price data with 'date', 'price', 'is_sunday', 'returns' columns
+        weekly_investment (float): Amount to invest weekly
+        training_window (int): Number of days to use for initial training
+        prediction_threshold (float): Confidence threshold for making investments
+        features (list): List of column names to use as features, defaults to ["returns", "price"]
+        
+    Returns:
+        polars.DataFrame: DataFrame with strategy results
+    """
+    import xgboost as xgb
+    from sklearn.preprocessing import StandardScaler
+    
+    # Create a copy of the dataframe (treating data as immutable)
+    df = df.clone()
+    
+    # Add row index if it doesn't exist
+    if "row_index" not in df.columns:
+        df = df.with_row_index("row_index")
+    
+    # Default features if none provided
+    if features is None:
+        features = ["returns", "price"]
+        
+    # Add some technical indicators as features
+    prices = df["price"].to_numpy()
+    returns = df["returns"].to_numpy()
+    
+    # 5-day moving average
+    ma5 = calculate_moving_average(prices, 5)
+    df = df.with_columns(pl.Series(ma5).alias("ma5"))
+    
+    # 20-day moving average
+    ma20 = calculate_moving_average(prices, 20)
+    df = df.with_columns(pl.Series(ma20).alias("ma20"))
+    
+    # Price relative to moving averages
+    if "ma5" not in features and "ma5" in df.columns:
+        features.append("ma5")
+    if "ma20" not in features and "ma20" in df.columns:
+        features.append("ma20")
+    
+    # 14-day RSI
+    rsi14 = calculate_rsi(prices, 14)
+    df = df.with_columns(pl.Series(rsi14).alias("rsi14"))
+    if "rsi14" not in features and "rsi14" in df.columns:
+        features.append("rsi14")
+    
+    # 14-day volatility
+    vol14 = calculate_volatility(returns, 14)
+    df = df.with_columns(pl.Series(vol14).alias("vol14"))
+    if "vol14" not in features and "vol14" in df.columns:
+        features.append("vol14")
+    
+    # Arrays for storing predictions and confidence levels
+    predictions = np.zeros(len(df))
+    confidences = np.zeros(len(df))
+    
+    # Arrays for investment decision
+    is_sunday = df["is_sunday"].to_numpy()
+    investment_factors = np.zeros(len(df))
+    
+    # Initialize the model with some data
+    if len(df) > training_window:
+        # Initial training data
+        X_train, y_train = prepare_features_for_ml(
+            df.slice(0, training_window), features, "returns", 1
+        )
+        
+        # Normalize features
+        scaler = StandardScaler()
+        X_train_scaled = scaler.fit_transform(X_train)
+        
+        # Initialize and train model
+        model = xgb.XGBClassifier(
+            n_estimators=50, 
+            learning_rate=0.1,
+            max_depth=3,
+            use_label_encoder=False,
+            eval_metric='logloss'
+        )
+        
+        if len(X_train_scaled) > 0 and len(np.unique(y_train)) > 1:
+            model.fit(X_train_scaled, y_train)
+            
+            # Make predictions for future days
+            for i in range(training_window, len(df)):
+                if i % 7 == 0:  # Retrain periodically
+                    # Update training data with a sliding window
+                    X_train, y_train = prepare_features_for_ml(
+                        df.slice(max(0, i-training_window), i), features, "returns", 1
+                    )
+                    
+                    # Retrain model if we have enough data and multiple classes
+                    if len(X_train) > 0 and len(np.unique(y_train)) > 1:
+                        X_train_scaled = scaler.fit_transform(X_train)
+                        model.fit(X_train_scaled, y_train)
+                
+                # Get current features for prediction
+                X_current, _ = prepare_features_for_ml(
+                    df.slice(i, i+1), features, "returns", 0
+                )
+                
+                if len(X_current) > 0:
+                    X_current_scaled = scaler.transform(X_current)
+                    
+                    # Get prediction
+                    pred_proba = model.predict_proba(X_current_scaled)[0]
+                    predictions[i] = 1 if pred_proba[1] > prediction_threshold else 0
+                    confidences[i] = pred_proba[1]  # Probability of positive class
+                    
+                    # Set investment factor based on prediction and confidence
+                    if is_sunday[i]:
+                        if predictions[i] == 1:  # Model predicts price will go up
+                            # Scale investment by confidence level
+                            confidence_boost = (confidences[i] - prediction_threshold) / (1 - prediction_threshold)
+                            investment_factors[i] = 1.0 + min(1.0, confidence_boost)
+                        else:
+                            # Invest less when prediction is negative
+                            investment_factors[i] = 0.5
+    
+    # Default investment factor for days we couldn't predict
+    for i in range(len(df)):
+        if is_sunday[i] and investment_factors[i] == 0:
+            investment_factors[i] = 1.0
+    
+    # Calculate investments
+    investments = np.array([
+        weekly_investment * factor if is_sun else 0
+        for is_sun, factor in zip(is_sunday, investment_factors)
+    ])
+    
+    # Calculate BTC bought
+    prices = df["price"].to_numpy()
+    btc_bought = np.array([inv / price if price > 0 else 0 
+                          for inv, price in zip(investments, prices)])
+    
+    # Calculate cumulative values
+    cumulative_investment = np.cumsum(investments)
+    cumulative_btc = np.cumsum(btc_bought)
+    
+    # Add calculated columns to the dataframe
+    df = df.with_columns([
+        pl.Series(predictions).alias("prediction"),
+        pl.Series(confidences).alias("confidence"),
+        pl.Series(investment_factors).alias("investment_factor"),
+        pl.Series(investments).alias("investment"),
+        pl.Series(btc_bought).alias("btc_bought"),
+        pl.Series(cumulative_investment).alias("cumulative_investment"),
+        pl.Series(cumulative_btc).alias("cumulative_btc")
+    ])
+    
+    return df
