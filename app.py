@@ -445,31 +445,32 @@ else:  # "Backtest Strategies"
     Dollar Cost Averaging (DCA) strategy. See which approaches might generate alpha over a simple DCA approach.
     """)
     
-    # Sidebar for date selection and strategy parameters
+    # Sidebar for time period selection and strategy parameters
     st.sidebar.header("Backtest Parameters")
     st.sidebar.markdown("""
     💾 Historical Bitcoin data is stored locally for faster and more extensive backtesting.
-    If data for your selected date range isn't available locally, it will be fetched from CoinGecko.
     """)
 
-    # Date range selection 
+    # Time period selection (matching optimization view)
     today = datetime.date.today()
-    ten_years_ago = today.replace(year=today.year - 10)
-    default_start_date = today - timedelta(days=365)  # 1 year ago by default
-
-    start_date = st.sidebar.date_input(
-        "Start Date",
-        value=default_start_date,
-        min_value=ten_years_ago,  # Up to 10 years ago
-        max_value=today - timedelta(days=30)  # At least 30 days of data
+    
+    # Use the same periods as in the optimization view
+    period_options = ["1 Year", "5 Years", "10 Years"]
+    selected_period = st.sidebar.selectbox(
+        "Select Time Period",
+        period_options,
+        index=0  # Default to 1 Year
     )
-
-    end_date = st.sidebar.date_input(
-        "End Date",
-        value=today,
-        min_value=start_date + timedelta(days=30),
-        max_value=today
-    )
+    
+    # Calculate start and end dates based on the selected period
+    end_date = today
+    
+    if selected_period == "1 Year":
+        start_date = today.replace(year=today.year - 1)
+    elif selected_period == "5 Years":
+        start_date = today.replace(year=today.year - 5)
+    else:  # 10 Years
+        start_date = today.replace(year=today.year - 10)
 
     # Investment amount - only AUD as per requirements
     investment_currency = "AUD"
@@ -690,7 +691,9 @@ else:  # "Backtest Strategies"
                             
                             # Calculate BTC per currency (efficiency metric)
                             final_btc = performance_metrics[strategy_name]["final_btc"]
-                            performance_metrics[strategy_name]["btc_per_currency"] = final_btc / total_invested * weekly_investment
+                            # Use standard amount (100) for consistent display
+                            standard_amount = 100.0
+                            performance_metrics[strategy_name]["btc_per_currency"] = final_btc / total_invested * standard_amount
                     
                     # Display summary of results
                     st.header("Backtesting Results")
@@ -749,8 +752,9 @@ else:  # "Backtest Strategies"
                     # Plot the results
                     st.header("Strategy Performance Visualization")
                     
-                    # Efficiency graph (BTC per currency invested)
-                    st.subheader(f"Strategy Efficiency (BTC per {weekly_investment} {investment_currency})")
+                    # Efficiency graph (BTC per 100 currency units)
+                    standard_amount = 100.0
+                    st.subheader(f"Strategy Efficiency (BTC per {standard_amount:.0f} {investment_currency})")
                     efficiency_fig = plot_cumulative_bitcoin(strategy_results, use_efficiency=True, currency=investment_currency)
                     st.plotly_chart(efficiency_fig, use_container_width=True)
                     

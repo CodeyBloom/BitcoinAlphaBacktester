@@ -27,13 +27,14 @@ def plot_cumulative_bitcoin(strategy_results, use_efficiency=False, currency="AU
         dates = df["date"].to_list()
         
         if use_efficiency:
-            # Calculate efficiency (BTC per currency invested) over time
-            weekly_investment = df["investment"].mean() * 7  # Estimate weekly investment
+            # Use 100 as the standard weekly investment amount for efficiency display
+            standard_weekly_amount = 100.0
             efficiency_values = []
             
             for i, row in enumerate(df.iter_rows(named=True)):
                 if row["cumulative_investment"] > 0:
-                    efficiency = row["cumulative_btc"] / row["cumulative_investment"] * weekly_investment
+                    # Calculate BTC per 100 currency units
+                    efficiency = row["cumulative_btc"] / row["cumulative_investment"] * standard_weekly_amount
                 else:
                     efficiency = 0
                 efficiency_values.append(efficiency)
@@ -48,8 +49,8 @@ def plot_cumulative_bitcoin(strategy_results, use_efficiency=False, currency="AU
                 )
             )
             
-            layout_title = f"Strategy Efficiency (BTC per {weekly_investment:.0f} {currency})"
-            layout_y_axis = f"BTC per {weekly_investment:.0f} {currency}"
+            layout_title = f"Strategy Efficiency (BTC per {standard_weekly_amount:.0f} {currency})"
+            layout_y_axis = f"BTC per {standard_weekly_amount:.0f} {currency}"
         else:
             # Plot raw BTC accumulation
             btc_values = df["cumulative_btc"].to_list()
