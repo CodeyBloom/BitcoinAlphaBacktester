@@ -693,51 +693,81 @@ else:  # "Backtest Strategies"
                             performance_metrics[strategy_name]["btc_per_currency"] = final_btc / total_invested * weekly_investment
                     
                     # Display summary of results
-                    st.header("Performance Summary")
+                    st.header("Backtesting Results")
                     
-                    metric_cols = st.columns(len(strategy_results))
-                    for i, (strategy_name, metrics) in enumerate(performance_metrics.items()):
-                        with metric_cols[i]:
-                            st.subheader(strategy_name)
-                            st.metric(
-                                "Final BTC Holdings", 
-                                f"{metrics['final_btc']:.8f} BTC"
-                            )
-                            st.metric(
-                                f"BTC per {weekly_investment} {investment_currency}", 
-                                f"{metrics['btc_per_currency']:.8f} BTC"
-                            )
-                            st.metric(
-                                "Max Drawdown", 
-                                f"{metrics['max_drawdown']*100:.2f}%"
-                            )
-                            st.metric(
-                                "Sortino Ratio", 
-                                f"{metrics['sortino_ratio']:.2f}"
-                            )
+                    # Create a DataFrame for strategy comparison (similar to optimization view)
+                    comparison_data = []
+                    for strategy_name, metrics in performance_metrics.items():
+                        # Format strategy name for display
+                        display_name = strategy_name
+                        
+                        # Find the most efficient strategy
+                        if len(performance_metrics) > 1:
+                            most_efficient_strategy = max(
+                                performance_metrics.items(),
+                                key=lambda x: x[1]["btc_per_currency"]
+                            )[0]
+                            
+                            if strategy_name == most_efficient_strategy:
+                                display_name += " (MOST EFFICIENT)"
+                        
+                        # Store actual values for sorting
+                        efficiency_val = metrics['btc_per_currency']
+                        
+                        comparison_data.append({
+                            "Strategy": display_name,
+                            f"Weekly Investment ({investment_currency})": weekly_investment,
+                            f"Total Investment ({investment_currency})": metrics['total_invested'],
+                            "BTC Accumulated": metrics['final_btc'],
+                            f"Efficiency (BTC/{investment_currency})": efficiency_val,
+                            "Max Drawdown": metrics['max_drawdown']*100,
+                            "Sortino Ratio": metrics['sortino_ratio'],
+                            "Efficiency_Sort": efficiency_val  # For sorting
+                        })
+                    
+                    # Convert to DataFrame for display
+                    import pandas as pd
+                    comparison_df = pd.DataFrame(comparison_data)
+                    
+                    # Sort by efficiency descending
+                    comparison_df = comparison_df.sort_values("Efficiency_Sort", ascending=False)
+                    
+                    # Format numeric columns
+                    comparison_df[f"Weekly Investment ({investment_currency})"] = comparison_df[f"Weekly Investment ({investment_currency})"].map(lambda x: f"{x:.2f}")
+                    comparison_df[f"Total Investment ({investment_currency})"] = comparison_df[f"Total Investment ({investment_currency})"].map(lambda x: f"{x:.2f}")
+                    comparison_df["BTC Accumulated"] = comparison_df["BTC Accumulated"].map(lambda x: f"{x:.8f}")
+                    comparison_df[f"Efficiency (BTC/{investment_currency})"] = comparison_df[f"Efficiency (BTC/{investment_currency})"].map(lambda x: f"{x:.8f}")
+                    comparison_df["Max Drawdown"] = comparison_df["Max Drawdown"].map(lambda x: f"{x:.2f}%")
+                    comparison_df["Sortino Ratio"] = comparison_df["Sortino Ratio"].map(lambda x: f"{x:.2f}")
+                    
+                    # Drop the sorting column
+                    comparison_df = comparison_df.drop("Efficiency_Sort", axis=1)
+                    
+                    # Display the comparison table
+                    st.dataframe(comparison_df, use_container_width=True, hide_index=True)
                     
                     # Plot the results
-                    st.header("Visualization of Results")
+                    st.header("Strategy Performance Visualization")
                     
                     # Efficiency graph (BTC per currency invested)
-                    st.subheader("Strategy Efficiency (BTC per currency invested)")
+                    st.subheader(f"Strategy Efficiency (BTC per {weekly_investment} {investment_currency})")
                     efficiency_fig = plot_cumulative_bitcoin(strategy_results, use_efficiency=True, currency=investment_currency)
                     st.plotly_chart(efficiency_fig, use_container_width=True)
                     
-                    # Cumulative Bitcoin
-                    with st.expander("View Cumulative Bitcoin Holdings"):
+                    # Add a tabbed interface for other metrics
+                    tab1, tab2, tab3 = st.tabs(["Cumulative BTC", "Maximum Drawdown", "Sortino Ratio"])
+                    
+                    with tab1:
                         cumulative_btc_fig = plot_cumulative_bitcoin(strategy_results)
                         st.plotly_chart(cumulative_btc_fig, use_container_width=True)
                     
-                    # Max Drawdown over time
-                    st.subheader("Maximum Drawdown Over Time")
-                    max_drawdown_fig = plot_max_drawdown(strategy_results)
-                    st.plotly_chart(max_drawdown_fig, use_container_width=True)
+                    with tab2:
+                        max_drawdown_fig = plot_max_drawdown(strategy_results)
+                        st.plotly_chart(max_drawdown_fig, use_container_width=True)
                     
-                    # Sortino Ratio
-                    st.subheader("Sortino Ratio Comparison")
-                    sortino_fig = plot_sortino_ratio(performance_metrics)
-                    st.plotly_chart(sortino_fig, use_container_width=True)
+                    with tab3:
+                        sortino_fig = plot_sortino_ratio(performance_metrics)
+                        st.plotly_chart(sortino_fig, use_container_width=True)
                     
                     # Display final comparisons against DCA
                     st.header("Strategy Comparison Against DCA Baseline")
