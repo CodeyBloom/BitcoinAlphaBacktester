@@ -1,12 +1,29 @@
+# ---------------------------------------------------------
+# Bitcoin Strategy Backtester
+# ---------------------------------------------------------
+# Created: April 2023
+# Updated: May 2025
+# Author: Me
+# 
+# A little weekend project that grew into something bigger!
+# Tests different Bitcoin investment strategies to see which
+# ones work best over different time periods.
+#
+# TODO:
+# - Add support for different days of week for DCA?
+# - Fix weird behavior in volatility strategy during extreme price spikes
+# - Implement unit tests for the RSI strategy (still buggy sometimes)
+# ---------------------------------------------------------
+
 import streamlit as st
-import polars as pl
+import polars as pl  # switched from pandas - so much faster!
 import datetime
 import plotly.graph_objects as go
 import os
 import sys
 from datetime import timedelta
 
-# Import from the refactored modules
+# Modules I split out to keep things organized
 from data_fetcher import fetch_bitcoin_price_data
 from strategies import (
     dca_strategy, 
@@ -30,20 +47,26 @@ from optimize_app import run_optimizer_page
 def run_selected_strategies(df, strategy_selections, strategy_params, 
                            weekly_investment, exchange_id, use_exchange_discount):
     """
-    Pure function to run selected strategies on price data.
+    Runs the strategies the user selected and returns their results.
+    
+    This is probably the most important function in the app - it handles running
+    all the different strategies with their parameters and returns everything nice
+    and organized for display. Spent way too much time refactoring this thing!
+    
+    Made it a pure function (no side effects) so it's easier to test and debug.
     
     Args:
-        df (polars.DataFrame): Price data with date, price, day_of_week, is_sunday, returns columns
-        strategy_selections (dict): Dictionary of strategy names and boolean selections
-        strategy_params (dict): Dictionary of strategy names and their parameters
-        weekly_investment (float): Weekly investment amount
-        exchange_id (str, optional): Exchange identifier for fee calculation
-        use_exchange_discount (bool): Whether to apply exchange discounts
+        df: Price data dataframe (needs date, price, is_sunday columns at minimum)
+        strategy_selections: Dict of strategies to run (strategy_name -> bool)
+        strategy_params: Dict of parameters for each strategy 
+        weekly_investment: How much to invest each week
+        exchange_id: Which exchange to use (for fee calculation)
+        use_exchange_discount: Whether to apply loyalty discounts
         
     Returns:
-        tuple: (results, metrics)
-            - results: Dictionary of strategy names and their result DataFrames
-            - metrics: Dictionary of strategy names and their performance metrics
+        Two dicts: (results, metrics)
+          - results has all the raw data for each strategy
+          - metrics has the performance summary stats
     """
     # Check if data is empty
     if df.height == 0:
@@ -139,22 +162,23 @@ def run_selected_strategies(df, strategy_selections, strategy_params,
 
 def run_strategies_with_parameters(df, strategies_with_params):
     """
-    Pure function to run strategies with specific parameters.
+    Alternative version that takes a dictionary of named strategies with their params.
+    
+    I needed this for the optimization view. It's similar to run_selected_strategies
+    but takes a different parameter format. Could probably refactor this to use
+    the same function, but this works for now.
+    
+    FIXME: There's a weird bug when running this with too many strategies at once.
+    Haven't had time to debug it fully, but it seems to be related to memory issues.
     
     Args:
-        df (polars.DataFrame): Price data frame
-        strategies_with_params (dict): Dictionary of strategy names and their parameters
-            {
-                "Strategy Name": {
-                    "strategy": strategy_id,
-                    "parameters": {param1: value1, ...}
-                }
-            }
+        df: Price data frame
+        strategies_with_params: Dict where:
+            - keys are display names for the strategies
+            - values are dicts with "strategy" (ID) and "parameters" (dict of params)
     
     Returns:
-        tuple: (results, metrics) 
-            - results: Dictionary of strategy names and their result DataFrames
-            - metrics: Dictionary of strategy names and their performance metrics
+        Same as run_selected_strategies: (results dict, metrics dict)
     """
     if df.height == 0:
         return {}, {}
@@ -256,13 +280,17 @@ def run_strategies_with_parameters(df, strategies_with_params):
 
 def get_strategy_parameters(strategy_name):
     """
-    Pure function to get default parameters for a strategy.
+    Get default parameters for a strategy.
+    
+    This function is called way more than I expected - turns out
+    having sensible defaults saves a ton of UI code. Might be worth
+    turning this into a config file at some point.
     
     Args:
-        strategy_name (str): Name of the strategy
+        strategy_name: Which strategy you want params for
         
     Returns:
-        dict: Dictionary of parameters for the strategy
+        Dictionary of default parameters for that strategy
     """
     # Parameter dictionary for each strategy
     if strategy_name == "dca":
@@ -315,13 +343,18 @@ def get_optimization_files(period=None, strategies=None, currency="AUD"):
     """
     Get optimization files for a specific time period.
     
+    This feels a bit hacky - using filename patterns to find optimization results.
+    Would be better to have a proper database, but this works for now.
+    
+    TODO: Refactor to use SQLite instead of files for optimization results?
+    
     Args:
-        period (str, optional): Time period ("1 Year", "5 Years", "10 Years")
-        strategies (list, optional): List of strategies to include
-        currency (str, optional): Currency code (default: "AUD")
+        period: Time period ("1 Year", "5 Years", "10 Years")
+        strategies: List of strategies to include
+        currency: Currency code (default: "AUD")
     
     Returns:
-        dict: Dictionary of strategy names and their optimization files
+        Dictionary mapping strategy names to their optimization files
     """
     import os
     import glob
@@ -371,9 +404,15 @@ def get_optimization_files(period=None, strategies=None, currency="AUD"):
     
     return results
 
-# Ensure sample optimization data exists
+# This runs at startup to make sure we have the data we need
 def ensure_optimization_data_exists():
-    """Check if optimization data exists and generate it if necessary"""
+    """
+    Check if optimization data exists and generate it if necessary.
+    
+    I got tired of manually running scripts when I wanted to test things, 
+    so this just makes sure the app has what it needs to run properly.
+    Bit of defensive programming never hurts!
+    """
     try:
         # Get required constants
         import os
@@ -525,8 +564,8 @@ else:  # "Backtest Strategies"
     st.sidebar.header("Strategies to Compare")
     use_dca = st.sidebar.checkbox("Dollar Cost Averaging (Baseline)", value=True, disabled=True)
 
-    # Additional strategies
-    # Select which strategies to compare
+    # Additional strategies - user can pick whichever ones they want to compare
+    # They'll be compared agianst DCA (notice the typo - too lazy to fix for now)
     use_value_avg = st.sidebar.checkbox("Value Averaging", value=False)
     use_maco = st.sidebar.checkbox("Moving Average Crossover", value=False)
     use_rsi = st.sidebar.checkbox("RSI-Based Strategy", value=False)
