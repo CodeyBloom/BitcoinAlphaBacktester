@@ -4,12 +4,14 @@ import polars as pl
 import numpy as np
 from metrics import calculate_drawdown_over_time
 
-def plot_cumulative_bitcoin(strategy_results):
+def plot_cumulative_bitcoin(strategy_results, use_efficiency=False, currency="AUD"):
     """
-    Plot cumulative Bitcoin holdings for different strategies
+    Plot cumulative Bitcoin holdings or efficiency for different strategies
     
     Args:
         strategy_results (dict): Dictionary of strategy names and their DataFrames
+        use_efficiency (bool): If True, plot BTC per currency invested instead of raw BTC
+        currency (str): Currency code for display purposes
         
     Returns:
         plotly.graph_objects.Figure: Plotly figure object
@@ -19,22 +21,52 @@ def plot_cumulative_bitcoin(strategy_results):
     for strategy_name, df in strategy_results.items():
         # Convert Polars dataframe columns to lists for Plotly
         dates = df["date"].to_list()
-        btc_values = df["cumulative_btc"].to_list()
         
-        fig.add_trace(
-            go.Scatter(
-                x=dates,
-                y=btc_values,
-                mode="lines",
-                name=strategy_name
+        if use_efficiency:
+            # Calculate efficiency (BTC per currency invested) over time
+            weekly_investment = df["investment"].mean() * 7  # Estimate weekly investment
+            efficiency_values = []
+            
+            for i, row in enumerate(df.iter_rows(named=True)):
+                if row["cumulative_investment"] > 0:
+                    efficiency = row["cumulative_btc"] / row["cumulative_investment"] * weekly_investment
+                else:
+                    efficiency = 0
+                efficiency_values.append(efficiency)
+                
+            fig.add_trace(
+                go.Scatter(
+                    x=dates,
+                    y=efficiency_values,
+                    mode="lines",
+                    name=strategy_name,
+                    hovertemplate='%{y:.8f} BTC/' + currency + '<br>%{x|%d %b %Y}<extra></extra>'
+                )
             )
-        )
+            
+            title = f"Strategy Efficiency (BTC per {weekly_investment:.0f} {currency})"
+            y_axis_title = f"BTC per {weekly_investment:.0f} {currency}"
+        else:
+            # Plot raw BTC accumulation
+            btc_values = df["cumulative_btc"].to_list()
+            
+            fig.add_trace(
+                go.Scatter(
+                    x=dates,
+                    y=btc_values,
+                    mode="lines",
+                    name=strategy_name
+                )
+            )
+            
+            title = "Cumulative Bitcoin Holdings by Strategy"
+            y_axis_title = "Bitcoin Holdings (BTC)"
     
     # Add customization to the layout
     fig.update_layout(
-        title="Cumulative Bitcoin Holdings by Strategy",
+        title=title,
         xaxis_title="Date",
-        yaxis_title="Bitcoin Holdings (BTC)",
+        yaxis_title=y_axis_title,
         legend_title="Strategies",
         hovermode="x unified"
     )

@@ -719,10 +719,15 @@ else:  # "Backtest Strategies"
                     # Plot the results
                     st.header("Visualization of Results")
                     
+                    # Efficiency graph (BTC per currency invested)
+                    st.subheader("Strategy Efficiency (BTC per currency invested)")
+                    efficiency_fig = plot_cumulative_bitcoin(strategy_results, use_efficiency=True, currency=investment_currency)
+                    st.plotly_chart(efficiency_fig, use_container_width=True)
+                    
                     # Cumulative Bitcoin
-                    st.subheader("Cumulative Bitcoin Holdings")
-                    cumulative_btc_fig = plot_cumulative_bitcoin(strategy_results)
-                    st.plotly_chart(cumulative_btc_fig, use_container_width=True)
+                    with st.expander("View Cumulative Bitcoin Holdings"):
+                        cumulative_btc_fig = plot_cumulative_bitcoin(strategy_results)
+                        st.plotly_chart(cumulative_btc_fig, use_container_width=True)
                     
                     # Max Drawdown over time
                     st.subheader("Maximum Drawdown Over Time")
