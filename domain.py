@@ -923,8 +923,12 @@ def apply_xgboost_ml_strategy(df, weekly_investment, training_window=14, predict
             eval_metric='logloss'
         )
         
+        # Track if we have a trained model
+        has_trained_model = False
+        
         if len(X_train_scaled) > 0 and len(np.unique(y_train)) > 1:
             model.fit(X_train_scaled, y_train)
+            has_trained_model = True
             
             # Make predictions for future days
             for i in range(training_window, len(df)):
@@ -938,13 +942,14 @@ def apply_xgboost_ml_strategy(df, weekly_investment, training_window=14, predict
                     if len(X_train) > 0 and len(np.unique(y_train)) > 1:
                         X_train_scaled = scaler.fit_transform(X_train)
                         model.fit(X_train_scaled, y_train)
+                        has_trained_model = True
                 
                 # Get current features for prediction
                 X_current, _ = prepare_features_for_ml(
                     df.slice(i, i+1), features, "returns", 0
                 )
                 
-                if len(X_current) > 0:
+                if len(X_current) > 0 and has_trained_model:
                     X_current_scaled = scaler.transform(X_current)
                     
                     # Get prediction
@@ -955,9 +960,13 @@ def apply_xgboost_ml_strategy(df, weekly_investment, training_window=14, predict
                     # Set investment factor based on prediction and confidence
                     if is_sunday[i]:
                         if predictions[i] == 1:  # Model predicts price will go up
-                            # Scale investment by confidence level
-                            confidence_boost = (confidences[i] - prediction_threshold) / (1 - prediction_threshold)
-                            investment_factors[i] = 1.0 + min(1.0, confidence_boost)
+                            # Scale investment by confidence level (avoiding division by zero)
+                            if prediction_threshold < 1.0:
+                                confidence_boost = (confidences[i] - prediction_threshold) / (1 - prediction_threshold)
+                                investment_factors[i] = 1.0 + min(1.0, confidence_boost)
+                            else:
+                                # If prediction_threshold is 1.0, use a simple approach
+                                investment_factors[i] = 1.0 + (confidences[i] - 0.5)
                         else:
                             # Invest less when prediction is negative
                             investment_factors[i] = 0.5
