@@ -172,27 +172,8 @@ def run_optimizer_view():
         # Add a red button at the bottom of the sidebar
         st.sidebar.markdown("---")
         
-        # Add CSS styling to match the backtest button
-        red_button_style = """
-        <style>
-        div.stButton > button {
-            background-color: #ff4b4b;
-            color: white;
-            font-weight: bold;
-            border: none;
-            padding: 0.5rem 1rem;
-            border-radius: 0.3rem;
-            cursor: pointer;
-            width: 100%;
-        }
-        div.stButton > button:hover {
-            background-color: #d43e3e;
-        }
-        </style>
-        """
-        st.sidebar.markdown(red_button_style, unsafe_allow_html=True)
-        
-        if st.sidebar.button("📊 Focus on Results", key="sidebar_focus_button", use_container_width=True):
+        # Use the same button style as the "Run Backtest" button for consistency
+        if st.sidebar.button("Focus on Results", key="sidebar_focus_button", type="primary", use_container_width=True):
             # Save selections to session state
             st.session_state.currency = currency
             st.session_state.selected_period = selected_period
@@ -409,7 +390,7 @@ def run_optimizer_view():
         if not st.session_state.sidebar_minimized:
             col1, col2 = st.columns([3, 1])
             with col2:
-                if st.button("📊 Focus on Results", key="main_focus_button", type="primary", use_container_width=True):
+                if st.button("Focus on Results", key="main_focus_button", type="primary", use_container_width=True):
                     st.session_state.sidebar_minimized = True
                     st.rerun()
         else:
