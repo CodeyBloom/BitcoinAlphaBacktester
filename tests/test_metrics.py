@@ -121,3 +121,15 @@ def test_calculate_drawdown_over_time(sample_data):
     assert np.isclose(drawdown_series[peak_idx], 0.0)
     for i in range(31, 50):
         assert drawdown_series[i] > 0
+        
+def test_calculate_drawdown_over_time_empty():
+    """Test calculating drawdown over time with empty data"""
+    # Create empty DataFrame
+    df = pl.DataFrame({
+        "cumulative_btc": []
+    })
+    
+    # Should return empty series for empty data
+    drawdown_series = calculate_drawdown_over_time(df)
+    assert len(drawdown_series) == 0
+    assert drawdown_series.name == "drawdown"

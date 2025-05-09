@@ -11,6 +11,10 @@ def calculate_max_drawdown(df):
     Returns:
         float: Maximum drawdown as a decimal (0.0 to 1.0)
     """
+    # Check if DataFrame is empty
+    if df.height == 0:
+        return 0.0
+        
     # Create a running maximum expression
     cummax_expr = pl.col("cumulative_btc").cum_max()
     
@@ -91,6 +95,10 @@ def calculate_drawdown_over_time(df):
     Returns:
         polars.Series: Drawdown over time
     """
+    # Check if DataFrame is empty
+    if df.height == 0:
+        return pl.Series("drawdown", [], dtype=pl.Float64)
+        
     # Create a running maximum expression
     cummax_expr = pl.col("cumulative_btc").cum_max()
     
