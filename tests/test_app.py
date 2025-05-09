@@ -15,6 +15,8 @@ from importlib import import_module
 # Add parent directory to path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+
+
 # Import app functions to test
 from app import (
     ensure_optimization_data_exists,
@@ -493,6 +495,129 @@ def test_run_strategies_with_parameters_empty_data():
     # Should return empty dictionaries
     assert results == {}
     assert metrics == {}
+
+def test_backtest_page_ui(monkeypatch):
+    """Test the backtest page UI components and interactions"""
+    import importlib
+    import app
+    from datetime import date
+    
+    # Create a more specific mock for the sidebar with date inputs and selections
+    class ExtendedMockSidebar:
+        def __init__(self):
+            self.header_calls = []
+            self.date_input_calls = []
+            self.number_input_calls = []
+            self.selectbox_calls = []
+            self.checkbox_calls = []
+        
+        def header(self, text):
+            self.header_calls.append(text)
+            return None
+            
+        def date_input(self, label, **kwargs):
+            self.date_input_calls.append(label)
+            today = date.today()
+            if label == "Start Date":
+                return date(today.year - 1, today.month, today.day)
+            else:
+                return today
+            
+        def number_input(self, label, **kwargs):
+            self.number_input_calls.append(label)
+            return 100.0
+            
+        def selectbox(self, label, options, **kwargs):
+            self.selectbox_calls.append((label, options))
+            return options[0] if options else None
+            
+        def checkbox(self, label, value=False, **kwargs):
+            self.checkbox_calls.append(label)
+            return False
+    
+    # Create and patch the mock Streamlit
+    mock_st = MockSt()
+    mock_st.sidebar = ExtendedMockSidebar()
+    
+    # Mock specific sidebar methods
+    monkeypatch.setattr("app.st", mock_st)
+    
+    # Mock exchange profiles and Bitcoin data
+    monkeypatch.setattr("app.load_exchange_profiles", lambda: {"binance": {}, "coinbase": {}})
+    monkeypatch.setattr("app.fetch_bitcoin_price_data", lambda *args, **kwargs: pl.DataFrame())
+    monkeypatch.setattr("app.run_streamlit_app", lambda: None)
+    monkeypatch.setattr("app.run_optimizer_page", lambda: None)
+    monkeypatch.setattr("app.ensure_optimization_data_exists", lambda: True)
+    
+    # Reload the app module to trigger initialization
+    importlib.reload(app)
+    
+    # Force the backtest page to run
+    app.run_backtest_page = lambda: None
+    
+    # Check that essential UI components were created
+    assert len(mock_st.title_calls) > 0
+    assert "Bitcoin" in mock_st.title_calls[0]
+    assert len(mock_st.sidebar.header_calls) > 0
+    assert "Backtest" in mock_st.sidebar.header_calls[0]
+    
+    # Check that sidebar inputs were set up for date selection
+    assert "Start Date" in mock_st.sidebar.date_input_calls
+    assert "End Date" in mock_st.sidebar.date_input_calls
+    
+    # Verify fee calculation options are available
+    assert any(call[0] == "Exchange (for fee calculation)" 
+              for call in mock_st.sidebar.selectbox_calls)
+
+def test_streamlit_page_configuration(monkeypatch):
+    """Test Streamlit page configuration setup"""
+    import importlib
+    import app
+    
+    # Create a mock Streamlit that tracks page configuration
+    mock_st = MockSt()
+    
+    # Replace the normal set_page_config method with our tracker
+    page_config_calls = []
+    def mock_set_page_config(**kwargs):
+        page_config_calls.append(kwargs)
+    mock_st.set_page_config = mock_set_page_config
+    
+    # Create a special sidebar for tracking navigation
+    class NavigationSidebar:
+        def __init__(self):
+            self.title_calls = []
+            self.radio_calls = []
+            
+        def title(self, text):
+            self.title_calls.append(text)
+            
+        def radio(self, label, options, **kwargs):
+            self.radio_calls.append((label, options))
+            return options[0]
+    
+    mock_st.sidebar = NavigationSidebar()
+    
+    # Patch Streamlit
+    monkeypatch.setattr("app.st", mock_st)
+    
+    # Mock other app functions
+    monkeypatch.setattr("app.ensure_optimization_data_exists", lambda: True)
+    monkeypatch.setattr("app.run_optimizer_page", lambda: None)
+    monkeypatch.setattr("app.run_backtest_page", lambda: None)
+    
+    # Reload the app module to trigger initialization
+    importlib.reload(app)
+    
+    # Verify page configuration was called correctly
+    assert len(page_config_calls) == 1
+    assert page_config_calls[0]["page_title"] == "Bitcoin Strategy Backtester"
+    assert page_config_calls[0]["page_icon"] == "📊"
+    assert page_config_calls[0]["layout"] == "wide"
+    
+    # Verify sidebar navigation was set up
+    assert any("Navigation" in call for call in mock_st.sidebar.title_calls)
+    assert any("Select Page" in call[0] for call in mock_st.sidebar.radio_calls)
 
 def test_run_strategies_with_parameters(sample_price_data):
     """Test running strategies with parameters"""
