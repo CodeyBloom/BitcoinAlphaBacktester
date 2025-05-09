@@ -172,6 +172,23 @@ def sample_optimization_dir():
         file_path = os.path.join(temp_dir, f"dca_{start_date_str}_{end_date_str}_AUD.arrow")
         df.write_ipc(file_path)
         
+        # Create XGBoost ML data
+        xgboost_data = {
+            "strategy": "xgboost_ml",
+            "param_exchange_id": "kraken",
+            "param_weekly_investment": 180.0,
+            "param_use_discount": True,
+            "param_training_window": 14,
+            "param_prediction_threshold": 0.58,
+            "param_feature_set": "price,returns,volume,volatility",
+            "performance_final_btc": 0.65678912,
+            "performance_max_drawdown": 0.24,
+            "performance_sortino_ratio": 1.55,
+        }
+        xgboost_df = pl.DataFrame([xgboost_data])
+        xgboost_file_path = os.path.join(temp_dir, f"xgboost_ml_{start_date_str}_{end_date_str}_AUD.arrow")
+        xgboost_df.write_ipc(xgboost_file_path)
+        
         yield temp_dir
     finally:
         # Clean up
@@ -236,6 +253,22 @@ def test_display_optimization_results_multiple_strategies(mock_st):
                 "max_drawdown": 0.28,
                 "sortino_ratio": 1.12
             }
+        },
+        "xgboost_ml": {
+            "strategy": "xgboost_ml",
+            "best_params": {
+                "exchange_id": "kraken",
+                "weekly_investment": 180.0,
+                "use_discount": True,
+                "training_window": 14,
+                "prediction_threshold": 0.58,
+                "feature_set": "price,returns,volume,volatility"
+            },
+            "performance": {
+                "final_btc": 0.65678912,
+                "max_drawdown": 0.24,
+                "sortino_ratio": 1.55
+            }
         }
     }
     
@@ -247,6 +280,38 @@ def test_display_optimization_results_multiple_strategies(mock_st):
     assert len(mock_st.dataframe_calls) == 1
     assert "most efficient strategy" in mock_st.success_calls[0]
 
+def test_xgboost_ml_optimization_display(mock_st):
+    """Test displaying optimization results for XGBoost ML strategy"""
+    # Test data for XGBoost ML strategy
+    results = {
+        "strategy": "xgboost_ml",
+        "best_params": {
+            "exchange_id": "kraken",
+            "weekly_investment": 180.0,
+            "use_discount": True,
+            "training_window": 14,
+            "prediction_threshold": 0.58,
+            "feature_set": "price,returns,volume,volatility"
+        },
+        "performance": {
+            "final_btc": 0.65678912,
+            "max_drawdown": 0.24,
+            "sortino_ratio": 1.55
+        }
+    }
+    
+    # Call the function
+    display_optimization_results(results, single_strategy=True, currency="AUD")
+    
+    # Assertions
+    assert "XGBOOST_ML" in mock_st.subheader_calls[0]
+    assert f"Efficiency (BTC per AUD)" in mock_st.metrics
+    assert "Final BTC Holdings" in mock_st.metrics
+    assert "Total Investment" in mock_st.metrics
+    assert "Training Window" in str(mock_st.info_calls)
+    assert "Prediction Threshold" in str(mock_st.info_calls)
+    assert "Feature Set" in str(mock_st.info_calls)
+    
 def test_calculate_efficiency(mock_st):
     """Test efficiency calculation"""
     # Test data
