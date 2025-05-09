@@ -218,13 +218,21 @@ def create_simple_timeline(strategy_results, performance_metrics, best_strategy=
         cumulative_btc = df["cumulative_btc"].to_numpy()
         
         # Only plot points where investment was made
-        buy_mask = investments > 0
+        # Use element-wise comparison for NumPy arrays
+        buy_mask = np.greater(investments, 0)  
         buy_dates = strategy_dates[buy_mask]
-        buy_prices = prices[buy_mask]
-        buy_sizes = investments[buy_mask] / investments[buy_mask].max() * 15 + 5
         
-        # Add buy points
+        # Add buy points if we have valid buy points
         if len(buy_dates) > 0:
+            # Calculate necessary values for visualization
+            buy_prices = prices[buy_mask]
+            
+            # Prevent division by zero if all investments are the same
+            max_investment = investments[buy_mask].max()
+            if max_investment > 0:
+                buy_sizes = investments[buy_mask] / max_investment * 15 + 5
+            else:
+                buy_sizes = np.full_like(investments[buy_mask], 10.0)
             fig.add_trace(
                 go.Scatter(
                     x=buy_dates,
@@ -287,7 +295,9 @@ def display_implementation_steps(strategy_name, strategy_df):
     """
     # Analyze the strategy behavior to inform implementation steps
     investments = strategy_df["investment"].to_numpy()
-    non_zero_investments = investments[investments > 0]
+    # Use element-wise comparison for NumPy arrays
+    non_zero_mask = np.greater(investments, 0)
+    non_zero_investments = investments[non_zero_mask]
     
     if len(non_zero_investments) == 0:
         st.info("This strategy made no investments in the period.")
