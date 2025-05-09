@@ -33,12 +33,11 @@ CURRENCY = "AUD"
 # Define number of optimization iterations
 N_CALLS = 20  # Balance between quality and speed
 
-# Time periods - using just 1 year for now to save time
+# Time periods - include all for automated runs
 TIME_PERIODS = {
     "1 Year": 1,
-    # Commenting out multi-year periods to speed up execution
-    # "5 Years": 5,  
-    # "10 Years": 10
+    "5 Years": 5,
+    "10 Years": 10
 }
 
 def format_date(date_obj):
@@ -177,9 +176,46 @@ def run_all_real_optimizations():
             time.sleep(1)
 
 def main():
+    # Add command-line argument parsing
+    import argparse
+    parser = argparse.ArgumentParser(description="Run real optimizations using historical Bitcoin price data")
+    parser.add_argument("--years", type=int, default=None, help="Specific number of years to optimize (1, 5, or 10)")
+    parser.add_argument("--currency", type=str, default="AUD", help="Currency code (default: AUD)")
+    parser.add_argument("--n-calls", type=int, default=N_CALLS, help=f"Number of optimization iterations (default: {N_CALLS})")
+    args = parser.parse_args()
+    
     print("Starting real optimizations using actual historical data...")
-    run_all_real_optimizations()
-    print("\nAll real optimizations completed!")
+    try:
+        if args.years:
+            # Run optimization for specific number of years
+            period_name = f"{args.years} Year{'s' if args.years > 1 else ''}"
+            print(f"\nRunning real optimizations for {period_name} ({args.years} years)...")
+            
+            today = datetime.now()
+            end_date = today
+            start_date = end_date.replace(year=end_date.year - args.years)
+            
+            # Run optimizations for each strategy
+            for strategy in ["dca", "maco", "rsi", "volatility", "xgboost_ml"]:
+                result_df = run_optimization_for_period(
+                    strategy, args.years, args.currency, args.n_calls
+                )
+                
+                if result_df is not None:
+                    save_optimization_result(result_df, strategy, start_date, end_date, args.currency)
+                
+                # Be nice to the system - add a small delay between optimizations
+                time.sleep(1)
+        else:
+            # Run all optimizations
+            run_all_real_optimizations()
+            
+        print("\nAll requested optimizations completed!")
+        return 0
+    except Exception as e:
+        print(f"\nError during optimizations: {str(e)}")
+        print("Partial optimizations may have been saved.")
+        return 1
     
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

@@ -9,10 +9,13 @@ on:
 jobs:
   update_data_and_optimize:
     runs-on: ubuntu-latest
+    timeout-minutes: 60  # Set a reasonable timeout for the entire job
     
     steps:
       - name: Check out repository
         uses: actions/checkout@v3
+        with:
+          fetch-depth: 0  # Fetch all history for proper git operations
       
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -26,20 +29,68 @@ jobs:
           pip install -r requirements.txt
       
       - name: Fetch Bitcoin historical data (AUD only) using CryptoCompare API
-        run: python scripts/fetch_cryptocompare_data.py --currency AUD --years 10 --output data/bitcoin_prices.arrow
+        id: fetch_data
+        run: |
+          echo "::group::Fetching Bitcoin Data"
+          python scripts/fetch_cryptocompare_data.py --currency AUD --years 10 --output data/bitcoin_prices.arrow
+          echo "::endgroup::"
         continue-on-error: false  # Fail the workflow if we can't get data
       
+      # Even if real optimizations fail, we'll have fallback sample optimizations
       - name: Generate sample optimizations for predefined time periods
-        run: python scripts/generate_optimizations_for_periods.py
+        if: steps.fetch_data.outcome == 'success'
+        run: |
+          echo "::group::Generating Sample Optimizations"
+          python scripts/generate_optimizations_for_periods.py
+          echo "::endgroup::"
+        continue-on-error: true
         
-      - name: Run real optimizations using historical data
-        run: python scripts/run_real_optimizations.py
+      # Real optimizations based on actual data
+      - name: Run real optimizations using historical data (1 Year)
+        if: steps.fetch_data.outcome == 'success'
+        id: optimize_1yr
+        run: |
+          echo "::group::Running 1-Year Optimizations"
+          python scripts/run_real_optimizations.py --years 1
+          echo "::endgroup::"
         continue-on-error: true  # Continue even if some optimizations fail
+        
+      - name: Run real optimizations using historical data (5 Years)
+        if: steps.fetch_data.outcome == 'success'
+        id: optimize_5yr
+        run: |
+          echo "::group::Running 5-Year Optimizations"
+          python scripts/run_real_optimizations.py --years 5
+          echo "::endgroup::"
+        continue-on-error: true  # Continue even if some optimizations fail
+        
+      - name: Run real optimizations using historical data (10 Years)
+        if: steps.fetch_data.outcome == 'success'
+        id: optimize_10yr
+        run: |
+          echo "::group::Running 10-Year Optimizations"
+          python scripts/run_real_optimizations.py --years 10
+          echo "::endgroup::"
+        continue-on-error: true  # Continue even if some optimizations fail
+      
+      # Log optimization status
+      - name: Log optimization status
+        run: |
+          echo "1-Year optimization status: ${{ steps.optimize_1yr.outcome }}"
+          echo "5-Year optimization status: ${{ steps.optimize_5yr.outcome }}"
+          echo "10-Year optimization status: ${{ steps.optimize_10yr.outcome }}"
       
       - name: Commit and push if there are changes
         run: |
           git config --local user.email "actions@github.com"
           git config --local user.name "GitHub Actions"
           git add data/
-          git commit -m "Update Bitcoin data and optimization results" || echo "No changes to commit"
+          git diff --staged --quiet || git commit -m "Update Bitcoin data and optimization results"
           git push
+        
+      - name: Verification summary
+        run: |
+          echo "Bitcoin data update complete"
+          ls -la data/
+          echo "Optimization files:"
+          ls -la data/optimizations/ | grep -E "dca|maco|rsi|volatility"
