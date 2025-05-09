@@ -637,6 +637,11 @@ else:  # "Backtest Strategies"
                     # Create a dictionary to store strategy results
                     strategy_results = {}
                     
+                    # Check if enough data for ML strategy - require at least 30 days for XGBoost
+                    if use_xgboost_ml and len(df) < 30:
+                        st.warning("XGBoost ML strategy requires at least 30 days of data. This strategy will be disabled.")
+                        use_xgboost_ml = False
+                    
                     # Get exchange parameters
                     exchange_id = None if selected_exchange == "None" else selected_exchange
                     
@@ -657,14 +662,27 @@ else:  # "Backtest Strategies"
                     
                     # Run the strategies using the pure function
                     with st.spinner("Running selected strategies..."):
-                        strategy_results, performance_metrics = run_selected_strategies(
-                            df, 
-                            strategy_selections, 
-                            strategy_params, 
-                            weekly_investment,
-                            exchange_id,
-                            use_exchange_discount
-                        )
+                        try:
+                            strategy_results, performance_metrics = run_selected_strategies(
+                                df, 
+                                strategy_selections, 
+                                strategy_params, 
+                                weekly_investment,
+                                exchange_id,
+                                use_exchange_discount
+                            )
+                        except ZeroDivisionError:
+                            st.error("Division by zero error occurred. This is likely due to insufficient data for the selected strategies.")
+                            # Fall back to just DCA strategy
+                            strategy_selections = {"dca": True}
+                            strategy_results, performance_metrics = run_selected_strategies(
+                                df, 
+                                {"dca": True},  # Only run DCA
+                                {}, 
+                                weekly_investment,
+                                exchange_id,
+                                use_exchange_discount
+                            )
                             
                     # Show exchange information if used
                     if exchange_id:

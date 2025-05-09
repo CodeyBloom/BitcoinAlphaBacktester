@@ -857,6 +857,11 @@ def apply_xgboost_ml_strategy(df, weekly_investment, training_window=14, predict
     # Create a copy of the dataframe (treating data as immutable)
     df = df.clone()
     
+    # Safety check - we need at least 30 days of data for ML strategy to work
+    if len(df) < 30:
+        # Apply a simple DCA strategy if dataset is too small
+        return apply_dca_strategy(df, weekly_investment)
+    
     # Add row index if it doesn't exist
     if "row_index" not in df.columns:
         df = df.with_row_index("row_index")
@@ -897,84 +902,85 @@ def apply_xgboost_ml_strategy(df, weekly_investment, training_window=14, predict
     
     # Arrays for storing predictions and confidence levels
     predictions = np.zeros(len(df))
-    confidences = np.zeros(len(df))
+    confidences = np.zeros(len(df)) + 0.5  # Default confidence of 0.5 (neutral)
     
     # Arrays for investment decision
     is_sunday = df["is_sunday"].to_numpy()
-    investment_factors = np.zeros(len(df))
+    investment_factors = np.ones(len(df))  # Default to 1.0 investment factor (DCA)
     
     # Initialize the model with some data
-    if len(df) > training_window:
-        # Initial training data
-        X_train, y_train = prepare_features_for_ml(
-            df.slice(0, training_window), features, "returns", 1
-        )
-        
-        # Normalize features
-        scaler = StandardScaler()
-        X_train_scaled = scaler.fit_transform(X_train)
-        
-        # Initialize and train model
-        model = xgb.XGBClassifier(
-            n_estimators=50, 
-            learning_rate=0.1,
-            max_depth=3,
-            use_label_encoder=False,
-            eval_metric='logloss'
-        )
-        
-        # Track if we have a trained model
-        has_trained_model = False
-        
-        if len(X_train_scaled) > 0 and len(np.unique(y_train)) > 1:
-            model.fit(X_train_scaled, y_train)
-            has_trained_model = True
+    try:
+        if len(df) > training_window:
+            # Initial training data
+            X_train, y_train = prepare_features_for_ml(
+                df.slice(0, training_window), features, "returns", 1
+            )
             
-            # Make predictions for future days
-            for i in range(training_window, len(df)):
-                if i % 7 == 0:  # Retrain periodically
-                    # Update training data with a sliding window
-                    X_train, y_train = prepare_features_for_ml(
-                        df.slice(max(0, i-training_window), i), features, "returns", 1
-                    )
-                    
-                    # Retrain model if we have enough data and multiple classes
-                    if len(X_train) > 0 and len(np.unique(y_train)) > 1:
-                        X_train_scaled = scaler.fit_transform(X_train)
-                        model.fit(X_train_scaled, y_train)
-                        has_trained_model = True
+            # Safety check - need enough data with different classes
+            if len(X_train) > 0 and len(np.unique(y_train)) > 1:
+                # Normalize features
+                scaler = StandardScaler()
+                X_train_scaled = scaler.fit_transform(X_train)
                 
-                # Get current features for prediction
-                X_current, _ = prepare_features_for_ml(
-                    df.slice(i, i+1), features, "returns", 0
+                # Initialize and train model
+                model = xgb.XGBClassifier(
+                    n_estimators=50, 
+                    learning_rate=0.1,
+                    max_depth=3,
+                    use_label_encoder=False,
+                    eval_metric='logloss'
                 )
                 
-                if len(X_current) > 0 and has_trained_model:
-                    X_current_scaled = scaler.transform(X_current)
+                # Track if we have a trained model
+                has_trained_model = False
+                
+                model.fit(X_train_scaled, y_train)
+                has_trained_model = True
+                
+                # Make predictions for future days
+                for i in range(training_window, len(df)):
+                    if i % 7 == 0:  # Retrain periodically
+                        # Update training data with a sliding window
+                        X_train, y_train = prepare_features_for_ml(
+                            df.slice(max(0, i-training_window), i), features, "returns", 1
+                        )
+                        
+                        # Retrain model if we have enough data and multiple classes
+                        if len(X_train) > 0 and len(np.unique(y_train)) > 1:
+                            X_train_scaled = scaler.fit_transform(X_train)
+                            model.fit(X_train_scaled, y_train)
+                            has_trained_model = True
                     
-                    # Get prediction
-                    pred_proba = model.predict_proba(X_current_scaled)[0]
-                    predictions[i] = 1 if pred_proba[1] > prediction_threshold else 0
-                    confidences[i] = pred_proba[1]  # Probability of positive class
+                    # Get current features for prediction
+                    X_current, _ = prepare_features_for_ml(
+                        df.slice(i, i+1), features, "returns", 0
+                    )
                     
-                    # Set investment factor based on prediction and confidence
-                    if is_sunday[i]:
-                        if predictions[i] == 1:  # Model predicts price will go up
-                            # Scale investment by confidence level (avoiding division by zero)
-                            if prediction_threshold < 1.0:
-                                confidence_boost = (confidences[i] - prediction_threshold) / (1 - prediction_threshold)
-                                investment_factors[i] = 1.0 + min(1.0, confidence_boost)
+                    if len(X_current) > 0 and has_trained_model:
+                        X_current_scaled = scaler.transform(X_current)
+                        
+                        # Get prediction
+                        pred_proba = model.predict_proba(X_current_scaled)[0]
+                        predictions[i] = 1 if pred_proba[1] > prediction_threshold else 0
+                        confidences[i] = pred_proba[1]  # Probability of positive class
+                        
+                        # Set investment factor based on prediction and confidence
+                        if is_sunday[i]:
+                            if predictions[i] == 1:  # Model predicts price will go up
+                                # Scale investment by confidence level (avoiding division by zero)
+                                if prediction_threshold < 1.0:
+                                    confidence_boost = (confidences[i] - prediction_threshold) / (1 - prediction_threshold)
+                                    investment_factors[i] = 1.0 + min(1.0, confidence_boost)
+                                else:
+                                    # If prediction_threshold is 1.0, use a simple approach
+                                    investment_factors[i] = 1.0 + (confidences[i] - 0.5)
                             else:
-                                # If prediction_threshold is 1.0, use a simple approach
-                                investment_factors[i] = 1.0 + (confidences[i] - 0.5)
-                        else:
-                            # Invest less when prediction is negative
-                            investment_factors[i] = 0.5
-    
-    # Default investment factor for days we couldn't predict
-    for i in range(len(df)):
-        if is_sunday[i] and investment_factors[i] == 0:
-            investment_factors[i] = 1.0
+                                # Invest less when prediction is negative
+                                investment_factors[i] = 0.5
+    except Exception as e:
+        # In case of any exception, fall back to standard DCA investment factors
+        # (all 1.0 for Sundays, which we already initialized above)
+        pass
     
     # Calculate investments
     investments = np.array([
