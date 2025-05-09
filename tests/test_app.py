@@ -239,6 +239,31 @@ def test_ensure_optimization_data_exists(monkeypatch, mock_optimization_dir):
     # Verify the function returns True when it succeeds
     assert result is True
 
+def test_ensure_optimization_data_exists_error(monkeypatch):
+    """Test error handling in the ensure_optimization_data_exists function"""
+    import streamlit as st
+    from app import ensure_optimization_data_exists
+    
+    # Track error calls
+    error_messages = []
+    monkeypatch.setattr(st, "error", lambda msg: error_messages.append(msg))
+    
+    # Force an exception by mocking os.path.exists to raise an exception
+    def mock_exists(path):
+        raise Exception("Test exception")
+    
+    monkeypatch.setattr("os.path.exists", mock_exists)
+    
+    # Call the function
+    result = ensure_optimization_data_exists()
+    
+    # Verify the function returns False when it fails
+    assert result is False
+    
+    # Verify error message was displayed
+    assert len(error_messages) == 1
+    assert "Error ensuring optimization data exists" in error_messages[0]
+
 def test_run_selected_strategies_empty_data():
     """Test that run_selected_strategies handles empty dataframes gracefully"""
     from app import run_selected_strategies
@@ -381,6 +406,19 @@ def test_get_optimization_files(monkeypatch, mock_optimization_dir):
     assert "volatility" in results
     assert len(results.get("dca", [])) == 2  # Both 1 Year and 5 Years files
 
+def test_value_averaging_strategy_params():
+    """Test get_strategy_parameters specifically for value_avg strategy"""
+    from app import get_strategy_parameters
+    
+    params = get_strategy_parameters("value_avg")
+    assert "weekly_investment" in params
+    assert "exchange_id" in params
+    assert "target_growth_rate" in params
+    
+    # Check default values
+    assert params["weekly_investment"] == 100.0
+    assert params["target_growth_rate"] == 0.01  # 1% monthly growth rate
+
 def test_get_strategy_parameters():
     """Test getting strategy parameters with selected strategy"""
     # Test with DCA
@@ -426,6 +464,35 @@ def test_get_strategy_parameters():
     # Test with invalid strategy - should return empty dict
     params = get_strategy_parameters("invalid_strategy")
     assert params == {}
+
+def test_run_strategies_with_parameters_empty_data():
+    """Test run_strategies_with_parameters with empty data"""
+    from app import run_strategies_with_parameters
+    import polars as pl
+    
+    # Create an empty dataframe
+    empty_df = pl.DataFrame({
+        "date": [],
+        "price": [],
+        "day_of_week": [],
+        "is_sunday": [],
+        "returns": []
+    })
+    
+    # Create some test parameters
+    strategies_with_params = {
+        "DCA": {
+            "strategy": "dca",
+            "parameters": {"weekly_investment": 100.0}
+        }
+    }
+    
+    # Run with empty data
+    results, metrics = run_strategies_with_parameters(empty_df, strategies_with_params)
+    
+    # Should return empty dictionaries
+    assert results == {}
+    assert metrics == {}
 
 def test_run_strategies_with_parameters(sample_price_data):
     """Test running strategies with parameters"""
