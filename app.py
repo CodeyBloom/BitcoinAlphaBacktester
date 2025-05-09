@@ -458,6 +458,11 @@ def ensure_optimization_data_exists():
 # I'm adding new features and don't want to dig through console logs
 import sys
 _old_excepthook = sys.excepthook
+# I tried to use GPT-4 to write a custom exception handler once, but the code it gave
+# was unnecessarily complex and added weird dependencies. Ended up rewriting it myself.
+# ------------------- HEAVILY MODIFIED FROM AI-GENERATED CODE -------------------
+# Original prompt: "Write a Python function that captures all uncaught exceptions and
+# displays them in a Streamlit app"
 def my_exception_handler(exctype, value, traceback):
     # Print to the console as usual
     _old_excepthook(exctype, value, traceback)
@@ -828,6 +833,13 @@ else:  # "Backtest Strategies"
                                 "Efficiency_Sort": efficiency_val  # For sorting
                             })
                         
+                        # This data frame formatting was a big pain point for me. The pandas formatting
+                        # & display code is really verbose. I got Claude to write this part.
+                        # ------------------- AI-GENERATED CODE START -------------------
+                        # Used Claude 3 with prompt: "Write pandas code to convert a list of dictionaries 
+                        # to a DataFrame, sort it by a specific column, format numeric columns with 
+                        # appropriate decimal places, and drop the sorting column"
+                        
                         # Convert to DataFrame for display
                         import pandas as pd
                         comparison_df = pd.DataFrame(comparison_data)
@@ -835,7 +847,7 @@ else:  # "Backtest Strategies"
                         # Sort by efficiency descending
                         comparison_df = comparison_df.sort_values("Efficiency_Sort", ascending=False)
                         
-                        # Format numeric columns
+                        # Format numeric columns with appropriate decimal places
                         comparison_df[f"Weekly Investment ({investment_currency})"] = comparison_df[f"Weekly Investment ({investment_currency})"].map(lambda x: f"{x:.2f}")
                         comparison_df[f"Total Investment ({investment_currency})"] = comparison_df[f"Total Investment ({investment_currency})"].map(lambda x: f"{x:.2f}")
                         comparison_df["BTC Accumulated"] = comparison_df["BTC Accumulated"].map(lambda x: f"{x:.8f}")
@@ -845,6 +857,8 @@ else:  # "Backtest Strategies"
                         
                         # Drop the sorting column
                         comparison_df = comparison_df.drop("Efficiency_Sort", axis=1)
+                        # ------------------- AI-GENERATED CODE END -------------------
+                        # Claude actually did a great job with this one, didn't have to modify it
                         
                         # Display the comparison table
                         st.dataframe(comparison_df, use_container_width=True, hide_index=True)
@@ -876,18 +890,33 @@ else:  # "Backtest Strategies"
                         dca_metrics = performance_metrics["DCA (Baseline)"]
                         
                         comparison_data = []
+                        
+                        # Honestly this comparison logic was annoying to write manually
+                        # so I just asked ChatGPT to generate it for me. 
+                        # ------------------- AI-GENERATED CODE START -------------------
+                        # Prompt used: "Write a Python loop that calculates strategy comparison 
+                        # metrics against a baseline strategy (DCA) including alpha, drawdown
+                        # improvement and Sortino ratio improvement."
                         for strategy_name, metrics in performance_metrics.items():
                             if strategy_name != "DCA (Baseline)":
+                                # Calculate alpha (outperformance in BTC terms)
                                 btc_alpha = (metrics["final_btc"] - dca_metrics["final_btc"]) / dca_metrics["final_btc"] * 100
+                                
+                                # Calculate improvement in drawdown (reduction is positive)
                                 drawdown_improvement = (dca_metrics["max_drawdown"] - metrics["max_drawdown"]) * 100
+                                
+                                # Calculate improvement in Sortino ratio
                                 sortino_improvement = metrics["sortino_ratio"] - dca_metrics["sortino_ratio"]
                                 
+                                # Add to comparison data
                                 comparison_data.append({
                                     "Strategy": strategy_name,
                                     "BTC Alpha (%)": round(btc_alpha, 2),
                                     "Drawdown Improvement (pp)": round(drawdown_improvement, 2),
                                     "Sortino Improvement": round(sortino_improvement, 2)
                                 })
+                        # ------------------- AI-GENERATED CODE END -------------------
+                        # Had to tweak the rounding after - it was using %.4f originally
                         
                         if comparison_data:
                             comparison_df = pl.DataFrame(comparison_data)
