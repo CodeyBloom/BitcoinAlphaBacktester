@@ -1,0 +1,180 @@
+[23:48:21] 🚀 Starting up repository: 'bitcoinalphabacktester', branch: 'main', main module: 'app.py'
+
+[23:48:21] 🐙 Cloning repository...
+
+[23:48:22] 🐙 Cloning into '/mount/src/bitcoinalphabacktester'...
+
+[23:48:22] 🐙 Cloned repository!
+
+[23:48:22] 🐙 Pulling code changes from Github...
+
+[23:48:23] 📦 Processing dependencies...
+
+Prepared [2025-05-09 23:49:29.792773] 75 packages[2025-05-09 23:49:29.793499]  [2025-05-09 23:49:29.793894] in 1m 05s[2025-05-09 23:49:29.794257] 
+
+Installed 75 packages in 6.16s
+
+ + altair==5.5.0
+
+ + anyio==4.9.0
+
+ + attrs==25.3.0
+
+ + babel==2.17.0
+
+ + blinker==1.9.0
+
+ + cachetools==5.5.2
+
+ + certifi==2025.4.26
+
+ + charset-normalizer==3.4.2
+
+ + click==8.1.8
+
+ + contourpy==1.3.2
+
+ + courlan==1.3.2
+
+ + coverage==7.8.0
+
+ + cycler==0.12.1
+
+ + dateparser==1.2.1
+
+ + fonttools==4.57.0
+
+ + gitdb==4.0.12
+
+ + gitpython==3.1.44
+
+ + h11==0.16.0
+
+ + htmldate==1.9.3
+
+ + httpcore==1.0.9
+
+ + httpx==0.28.1
+
+ + idna==3.10
+
+ + iniconfig==2.1.0
+
+ + jinja2==3.1.6
+
+ + joblib==1.5.0
+
+ + jsonschema==4.23.0
+
+ + jsonschema-specifications==2025.4.1
+
+ + justext==3.0.2
+
+ + kiwisolver==1.4.8
+
+ + lxml==5.4.0
+
+ + lxml-html-clean==0.4.2
+
+ + markupsafe==3.0.2
+
+ + matplotlib==3.10.3
+
+ + narwhals==1.38.2
+
+ + numpy==2.2.5
+
+ + nvidia-nccl-cu12==2.26.5
+
+ + packaging==24.2
+
+ + pandas==2.2.3
+
+ + pillow==11.2.1
+
+ + plotly==6.0.1
+
+ + pluggy==1.5.0
+
+ + polars==1.29.0
+
+ + protobuf==6.30.2
+
+ + pyaml==25.1.0
+
+ + pyarrow==20.0.0
+
+ + pydeck==0.9.1
+
+ + pyparsing==3.2.3
+
+ + pytest==8.3.5
+
+ + pytest-cov==6.1.1
+
+ + python-dateutil==2.9.0.post0
+
+ + pytz==2025.2
+
+ + pyyaml==6.0.2
+
+ + referencing==0.36.2
+
+ + regex==2024.11.6
+
+ + requests==2.32.3
+
+ + rpds-py==0.24.0
+
+ + scikit-learn==1.6.1
+
+ + scikit-optimize==0.10.2
+
+ + scipy==1.15.3
+
+ + six==1.17.0
+
+ + smmap==5.0.2
+
+ + sniffio==1.3.1
+
+ + streamlit==1.45.0
+
+ + tenacity==9.1.2
+
+ + threadpoolctl==3.6.0
+
+ + tld==0.13
+
+ + toml==0.10.2
+
+ + tornado==6.4.2
+
+ + trafilatura==2.0.0
+
+ + typing-extensions==4.13.2
+
+ + tzdata==2025.2
+
+ + tzlocal==5.3.1
+
+ + urllib3==2.4.0
+
+ + watchdog==6.0.0
+
+ + xgboost==3.0.0
+
+[23:49:36] 🐍 Python dependencies were installed from /mount/src/bitcoinalphabacktester/uv.lock using uv-sync.
+
+[23:49:36] 📦 WARN: More than one requirements file detected in the repository. Available options: uv-sync /mount/src/bitcoinalphabacktester/uv.lock, uv /mount/src/bitcoinalphabacktester/requirements.txt, poetry /mount/src/bitcoinalphabacktester/pyproject.toml. Used: uv-sync with /mount/src/bitcoinalphabacktester/uv.lock
+
+Check if streamlit is installed
+
+Streamlit is already installed
+
+[23:49:39] 📦 Processed dependencies!
+
+[23:49:47] ❗️ The service has encountered an error while checking the health of the Streamlit app: Get "http://localhost:8501/healthz": dial tcp 127.0.0.1:8501: connect: connection refused
+
+main
+codeybloom/bitcoinalphabacktester/main/app.py

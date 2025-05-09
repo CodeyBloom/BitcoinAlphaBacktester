@@ -78,6 +78,8 @@ To set up the project for local development:
    ```
    streamlit run app.py
    ```
+   
+   Note: For Streamlit Cloud deployment, the port is automatically configured.
 
 ## Streamlit Cloud Deployment
 

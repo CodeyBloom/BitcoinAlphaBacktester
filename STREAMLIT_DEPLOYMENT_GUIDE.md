@@ -13,8 +13,23 @@
 
 2. **Deploy Your App**
    - Click "New app"
-   - Select your repository, branch (usually main), and the main Python file (app.py)
+   - Select your repository, branch (usually main)
+   - For Main file path, enter: `app.py`
+   - Leave Python version as the default (3.10 or newer)
    - Click "Deploy"
+   
+3. **Important Config File Settings**
+   - Make sure your `.streamlit/config.toml` file has these settings:
+     ```toml
+     [server]
+     headless = true
+     enableXsrfProtection = false
+     enableCORS = false
+     
+     [browser]
+     gatherUsageStats = false
+     ```
+   - Do NOT specify a port in the config file - Streamlit Cloud handles this
 
 3. **Advanced Settings (optional)**
    - You can configure additional settings:
@@ -37,6 +52,8 @@
    - Check if all dependencies are in requirements.txt
    - Verify your app can run locally
    - Check Streamlit Cloud logs for error messages
+   - Make sure your .streamlit/config.toml doesn't have a hardcoded port
+   - Streamlit Cloud expects to reach your app on port 8501
 
 2. **Data not loading**
    - Ensure data files are in the repository or downloaded at runtime
