@@ -17,8 +17,8 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 OPTIMIZATION_DIR = "data/optimizations"
 os.makedirs(OPTIMIZATION_DIR, exist_ok=True)
 
-# Currencies to optimize for
-CURRENCIES = ["AUD", "USD"]
+# Currencies to optimize for - focus on AUD only as requested
+CURRENCIES = ["AUD"]
 
 # Strategies to optimize
 STRATEGIES = ["dca", "maco", "rsi", "volatility"]
@@ -33,7 +33,7 @@ def format_date(date_obj):
     """Format date object as DD-MM-YYYY string"""
     return date_obj.strftime("%d%m%Y")  # Format used in optimization filenames
 
-def optimize_strategy(strategy, start_date_str, end_date_str, currency, n_calls=N_CALLS):
+def optimize_strategy(strategy, start_date_str, end_date_str, currency, run_number=1, n_calls=N_CALLS):
     """
     Run optimization for a specific strategy and save results.
     
@@ -42,6 +42,7 @@ def optimize_strategy(strategy, start_date_str, end_date_str, currency, n_calls=
         start_date_str (str): Start date in DDMMYYYY format
         end_date_str (str): End date in DDMMYYYY format
         currency (str): Currency code
+        run_number (int): Optimization run number (1, 2, or 3)
         n_calls (int): Number of optimization iterations
         
     Returns:
@@ -61,7 +62,7 @@ def optimize_strategy(strategy, start_date_str, end_date_str, currency, n_calls=
             print(f"Unknown strategy: {strategy}")
             return False
         
-        print(f"Optimizing {strategy.upper()} for {currency} from {start_date_str} to {end_date_str}...")
+        print(f"Optimizing {strategy.upper()} (Run {run_number}/3) for {currency} from {start_date_str} to {end_date_str}...")
         
         # Convert date format for the optimization function
         formatted_start = f"{start_date_str[:2]}-{start_date_str[2:4]}-{start_date_str[4:]}"
@@ -71,12 +72,13 @@ def optimize_strategy(strategy, start_date_str, end_date_str, currency, n_calls=
         result = optimize_func(formatted_start, formatted_end, currency, n_calls)
         
         if result is None:
-            print(f"  Failed to optimize {strategy}")
+            print(f"  Failed to optimize {strategy} (Run {run_number})")
             return False
         
         # Create a DataFrame from the optimization result
         data = {
             "strategy": strategy,
+            "run_number": run_number
         }
         
         # Add parameters with param_ prefix
@@ -90,15 +92,16 @@ def optimize_strategy(strategy, start_date_str, end_date_str, currency, n_calls=
         # Create DataFrame
         df = pl.DataFrame([data])
         
-        # Save to Arrow file
-        file_path = os.path.join(OPTIMIZATION_DIR, f"{strategy}_{start_date_str}_{end_date_str}_{currency}.arrow")
+        # Save to Arrow file - include run number in the filename
+        # Make sure run number is part of the filename to distinguish different runs
+        file_path = os.path.join(OPTIMIZATION_DIR, f"{strategy}_{start_date_str}_{end_date_str}_{currency}_run{run_number}.arrow")
         df.write_ipc(file_path)
         print(f"  Saved optimization results to {file_path}")
         
         return True
     
     except Exception as e:
-        print(f"  Error optimizing {strategy}: {str(e)}")
+        print(f"  Error optimizing {strategy} (Run {run_number}): {str(e)}")
         return False
 
 def run_all_optimizations():
@@ -123,13 +126,93 @@ def run_all_optimizations():
     for start_date_str, end_date_str, years in date_ranges:
         for currency in CURRENCIES:
             for strategy in STRATEGIES:
-                if not optimize_strategy(strategy, start_date_str, end_date_str, currency):
-                    success = False
-                
-                # Be nice to the system - add a small delay between optimizations
-                time.sleep(1)
+                # Run each optimization 3 times as requested
+                for run_number in range(1, 4):  # 1, 2, 3
+                    if not optimize_strategy(strategy, start_date_str, end_date_str, currency, run_number):
+                        success = False
+                    
+                    # Be nice to the system - add a small delay between optimizations
+                    time.sleep(1)
+    
+    # Also create a consolidated file for each strategy, time period, and currency
+    # by averaging the results of the 3 runs
+    print("Creating consolidated optimization files...")
+    consolidate_optimization_results()
     
     return success
+
+def consolidate_optimization_results():
+    """
+    Consolidate the 3 optimization runs for each strategy, time period, and currency
+    by averaging the results and saving them to a file without '_run{number}' in the name.
+    """
+    try:
+        # Get all optimization files
+        optimization_files = os.listdir(OPTIMIZATION_DIR)
+        
+        # Group files by strategy, time period, and currency
+        file_groups = {}
+        for filename in optimization_files:
+            if not filename.endswith(".arrow"):
+                continue
+                
+            # Parse the filename to get strategy, start_date, end_date, currency, and run_number
+            if "_run" in filename:
+                # Example: dca_09052024_09052025_AUD_run1.arrow
+                base_name = filename.split("_run")[0]  # dca_09052024_09052025_AUD
+                run_number = int(filename.split("_run")[1].split(".")[0])  # 1
+                
+                if base_name not in file_groups:
+                    file_groups[base_name] = []
+                
+                file_groups[base_name].append((filename, run_number))
+        
+        # Process each group
+        for base_name, files in file_groups.items():
+            # Skip if we don't have 3 runs
+            if len(files) != 3:
+                print(f"Warning: {base_name} has {len(files)} runs, expected 3. Skipping consolidation.")
+                continue
+            
+            # Sort by run number
+            files.sort(key=lambda x: x[1])
+            
+            # Load the data from each file
+            dfs = []
+            for filename, _ in files:
+                file_path = os.path.join(OPTIMIZATION_DIR, filename)
+                df = pl.read_ipc(file_path)
+                dfs.append(df)
+            
+            # Find the best run based on efficiency
+            best_df_index = 0
+            best_efficiency = 0
+            for i, df in enumerate(dfs):
+                # Extract efficiency from performance metrics
+                for col in df.columns:
+                    if col == "performance_efficiency":
+                        efficiency = df[col][0]
+                        if efficiency > best_efficiency:
+                            best_efficiency = efficiency
+                            best_df_index = i
+            
+            # Use the best run as the consolidated result
+            best_df = dfs[best_df_index]
+            
+            # Remove run_number column if it exists
+            if "run_number" in best_df.columns:
+                best_df = best_df.drop("run_number")
+            
+            # Save the consolidated result
+            consolidated_file_path = os.path.join(OPTIMIZATION_DIR, f"{base_name}.arrow")
+            best_df.write_ipc(consolidated_file_path)
+            print(f"Created consolidated file: {consolidated_file_path}")
+    
+    except Exception as e:
+        print(f"Error consolidating optimization results: {str(e)}")
+        return False
+    
+    return True
 
 def main():
     """Run all optimizations"""

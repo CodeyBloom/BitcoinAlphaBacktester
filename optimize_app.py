@@ -67,6 +67,9 @@ def run_optimizer_view():
         index=0
     )
     
+    # Store the selected period in session state for later access
+    st.session_state["selected_time_period"] = selected_period
+    
     # Calculate dates based on selected period
     years = time_periods[selected_period]
     end_date = datetime.date.today()
@@ -75,6 +78,9 @@ def run_optimizer_view():
     # Format dates for file paths and display
     start_date_str = start_date.strftime("%d%m%Y")
     end_date_str = end_date.strftime("%d%m%Y")
+    
+    # Display selected time period for debugging
+    st.sidebar.info(f"Selected period: {selected_period} ({start_date_str} to {end_date_str})")
     
     # Strategy selection
     st.sidebar.header("Strategies")
@@ -301,6 +307,12 @@ def run_optimizer_view():
 
 def display_optimization_results(results, best_strategy_name=None, single_strategy=True, currency="AUD"):
     """Display the optimization results in the Streamlit interface"""
+    # Reference to the time periods defined in run_optimizer_view
+    time_periods = {
+        "1 Year": 1,
+        "5 Years": 5,
+        "10 Years": 10
+    }
     
     st.header("Optimization Results")
     
@@ -376,9 +388,20 @@ def display_optimization_results(results, best_strategy_name=None, single_strate
         # Create a table of all results
         comparison_data = []
         
+        # Debug information to check what strategies were selected
+        st.info(f"Displaying results for {len(results)} strategies: {', '.join(results.keys())}")
+        
+        # Make sure we only process the strategies that were selected
         for strategy_name, result in results.items():
             weekly_investment = result["best_params"]["weekly_investment"]
-            weeks = 52  # Assuming one year of investment
+            
+            # Adjust weeks based on time period
+            # Extract years from strategy_name or fallback to 1
+            selected_time_period = st.session_state.get("selected_time_period", "1 Year")
+            years = time_periods.get(selected_time_period, 1)
+            
+            # Calculate total investment based on years
+            weeks = 52 * years  
             total_investment = weekly_investment * weeks
             efficiency = result["performance"]["final_btc"] / total_investment if total_investment > 0 else 0
             
@@ -394,6 +417,9 @@ def display_optimization_results(results, best_strategy_name=None, single_strate
         
         # Convert to DataFrame for display
         comparison_df = pd.DataFrame(comparison_data)
+        
+        # Make sure we have the right number of rows
+        st.info(f"Comparison table has {len(comparison_df)} rows")
         
         # Sort by efficiency descending
         efficiency_col = f"Efficiency (BTC/{currency})"
