@@ -89,4 +89,3 @@ def volatility_strategy(df, weekly_investment, vol_window=14, vol_threshold=1.5)
         polars.DataFrame: DataFrame with strategy results
     """
     return apply_volatility_strategy(df, weekly_investment, vol_window, vol_threshold)
-

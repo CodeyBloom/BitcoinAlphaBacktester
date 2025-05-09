@@ -107,8 +107,6 @@ def run_selected_strategies(df, strategy_selections, strategy_params,
             vol_threshold
         )
     
-
-    
     # Calculate metrics for each strategy
     metrics = {}
     for strategy_name, strategy_df in results.items():
@@ -211,8 +209,6 @@ def run_strategies_with_parameters(df, strategies_with_params):
                 vol_window,
                 vol_threshold
             )
-        
-
     
     # Calculate performance metrics
     metrics = {}
@@ -274,7 +270,6 @@ def get_strategy_parameters(strategy_name):
             "vol_window": 14,
             "vol_threshold": 1.5
         }
-
     else:
         # Return empty dict for unknown strategies
         return {}
@@ -499,7 +494,6 @@ else:  # "Backtest Strategies"
     use_rsi = st.sidebar.checkbox("RSI-Based Strategy", value=False)
     use_volatility = st.sidebar.checkbox("Volatility-Based Strategy", value=False)
 
-
     # Strategy parameters (only show if strategy is selected)
     strategy_params = {}
 
@@ -534,8 +528,6 @@ else:  # "Backtest Strategies"
             "vol_window": st.sidebar.slider("Volatility Window (days)", 5, 30, 14),
             "vol_threshold": st.sidebar.slider("Volatility Threshold Multiplier", 0.5, 3.0, 1.5, 0.1)
         }
-    
-
 
     # We've removed Lump Sum and Buy the Dip parameters in the refactored version
 
@@ -559,8 +551,6 @@ else:  # "Backtest Strategies"
         
         ### Volatility-Based Strategy
         Increases investment during periods of high volatility to capture potential upswings.
-        
-
         """)
 
     with st.expander("Performance Metrics Explained"):
