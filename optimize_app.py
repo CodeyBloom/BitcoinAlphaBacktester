@@ -278,7 +278,7 @@ def display_optimization_results(results, best_strategy_name=None, single_strate
         comparison_df = comparison_df.sort_values("Efficiency_Sort", ascending=False)
         comparison_df = comparison_df.drop("Efficiency_Sort", axis=1)
         
-        st.dataframe(comparison_df, use_container_width=True)
+        # No need for a separate index, we'll use the dropdown selector
         
         # Find the most efficient strategy
         most_efficient_strategy = max(
@@ -286,167 +286,183 @@ def display_optimization_results(results, best_strategy_name=None, single_strate
             key=lambda x: x[1]["performance"]["final_btc"] / (x[1]["best_params"]["weekly_investment"] * 52)
         )[0]
         
-        # Create a selection for which strategy to highlight
+        # Highlight most efficient strategy in the table
+        def highlight_most_efficient(row):
+            if row["Strategy"].lower() == most_efficient_strategy:
+                return ['background-color: #d4f1d4'] * len(row)
+            return [''] * len(row)
+        
+        styled_df = comparison_df.style.apply(highlight_most_efficient, axis=1)
+        st.write("Click on a strategy in the table to see its details:")
+        selection = st.dataframe(styled_df, use_container_width=True, height=150)
+        
+        # Default selected strategy is the most efficient one
+        selected_strategy = most_efficient_strategy
+        
+        # Create a selection mechanism for the strategy
         st.subheader("Strategy Details")
         
-        # Create tabs for each strategy, with the most efficient one first
+        # Create option to select any strategy, with most efficient as default
         strategy_list = list(results.keys())
-        # Move the most efficient to the front of the list
-        if most_efficient_strategy in strategy_list:
-            strategy_list.remove(most_efficient_strategy)
-            strategy_list.insert(0, most_efficient_strategy)
-            
-        tab_labels = [s.upper() + (" (MOST EFFICIENT)" if s == most_efficient_strategy else "") for s in strategy_list]
-        tabs = st.tabs(tab_labels)
+        strategy_options = [s.upper() + (" (MOST EFFICIENT)" if s == most_efficient_strategy else "") for s in strategy_list]
         
-        # Display each strategy's details in its respective tab
-        for i, strategy_name in enumerate(strategy_list):
-            with tabs[i]:
-                result = results[strategy_name]
-                params = result["best_params"]
-                performance = result["performance"]
-                
-                # Special formatting for the most efficient
-                if strategy_name == most_efficient_strategy:
-                    st.success(f"**{strategy_name.upper()}** is the most efficient strategy for this time period!")
-                
-                # Calculate metrics
-                weekly_investment = params.get("weekly_investment", 0)
-                weeks = 52  # Assuming one year of investment
-                total_investment = weekly_investment * weeks
-                efficiency = performance["final_btc"] / total_investment if total_investment > 0 else 0
-                
-                # Create two columns
-                col1, col2 = st.columns(2)
-                
-                with col1:
-                    st.markdown("### Optimal Parameters")
-                    for param, value in params.items():
-                        # Format nicely
-                        if param == "exchange_id":
-                            st.info(f"**Exchange:** {value}")
-                        elif param == "use_discount":
-                            st.info(f"**Use Loyalty Discount:** {'Yes' if value else 'No'}")
-                        elif param == "weekly_investment":
-                            st.info(f"**Weekly Investment:** {value:.2f} {currency}")
-                        else:
-                            # Strategy-specific parameters
-                            formatted_param = param.replace("_", " ").title()
-                            st.info(f"**{formatted_param}:** {value}")
-                            
-                with col2:
-                    st.markdown("### Performance")
-                    st.info(f"**Efficiency:** {efficiency:.8f} BTC/{currency}")
-                    st.info(f"**Final BTC:** {performance['final_btc']:.8f} BTC")
-                    st.info(f"**Total Investment:** {total_investment:.2f} {currency}")
-                    if "max_drawdown" in performance:
-                        st.info(f"**Max Drawdown:** {performance['max_drawdown']*100:.2f}%")
-                    if "sortino_ratio" in performance:
-                        st.info(f"**Sortino Ratio:** {performance['sortino_ratio']:.2f}")
-                
-                # Add implementation tutorial
-                st.markdown("### How to Implement This Strategy")
-                
-                # Different tutorial based on strategy
-                if strategy_name == "dca":
-                    st.markdown("""
-                    #### Dollar Cost Averaging Implementation:
-                    1. **Set Up Exchange Account**: Create an account on {exchange}.
-                    2. **Schedule Regular Deposits**: Deposit {investment:.2f} {currency} each week.
-                    3. **Automate Purchases**: Set up automatic purchases on {day} each week.
-                    4. **Enable Loyalty Discount**: {discount_instructions}.
-                    5. **Secure Your Bitcoin**: Consider transferring to a hardware wallet monthly.
+        # Map display names back to strategy keys
+        strategy_map = {s.upper() + (" (MOST EFFICIENT)" if s == most_efficient_strategy else ""): s for s in strategy_list}
+        
+        selected_option = st.selectbox(
+            "Select strategy to view details:",
+            strategy_options,
+            index=strategy_list.index(most_efficient_strategy)
+        )
+        selected_strategy = strategy_map[selected_option]
+        
+        # Display the selected strategy's details
+        strategy_name = selected_strategy
+        result = results[strategy_name]
+        params = result["best_params"]
+        performance = result["performance"]
+        
+        # Special formatting for the most efficient
+        if strategy_name == most_efficient_strategy:
+            st.success(f"**{strategy_name.upper()}** is the most efficient strategy for this time period!")
+        
+        # Calculate metrics
+        weekly_investment = params.get("weekly_investment", 0)
+        weeks = 52  # Assuming one year of investment
+        total_investment = weekly_investment * weeks
+        efficiency = performance["final_btc"] / total_investment if total_investment > 0 else 0
+        
+        # Create two columns
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.markdown("### Optimal Parameters")
+            for param, value in params.items():
+                # Format nicely
+                if param == "exchange_id":
+                    st.info(f"**Exchange:** {value}")
+                elif param == "use_discount":
+                    st.info(f"**Use Loyalty Discount:** {'Yes' if value else 'No'}")
+                elif param == "weekly_investment":
+                    st.info(f"**Weekly Investment:** {value:.2f} {currency}")
+                else:
+                    # Strategy-specific parameters
+                    formatted_param = param.replace("_", " ").title()
+                    st.info(f"**{formatted_param}:** {value}")
                     
-                    **Tip**: Many exchanges let you schedule automatic purchases, making this strategy extremely simple to implement.
-                    """.format(
-                        exchange=params["exchange_id"].capitalize(),
-                        investment=params["weekly_investment"],
-                        currency=currency,
-                        day=params.get("day_of_week", "Sunday"),
-                        discount_instructions="Enable the exchange's token discount program" if params["use_discount"] else "No discount required for this strategy"
-                    ))
-                
-                elif strategy_name == "maco":
-                    st.markdown("""
-                    #### Moving Average Crossover Implementation:
-                    1. **Set Up Exchange Account**: Create an account on {exchange}.
-                    2. **Allocate Investment Fund**: Set aside {investment:.2f} {currency} per week.
-                    3. **Track Moving Averages**: Monitor {short_window}-day and {long_window}-day moving averages.
-                    4. **Place Buy Orders**: Buy Bitcoin when short-term average crosses above long-term average.
-                    5. **Adjust Investment Size**: Invest more when crossing signal is strong (>1% difference).
-                    
-                    **Tip**: Use a cryptocurrency portfolio app or spreadsheet with auto-calculation to track the moving averages easily.
-                    """.format(
-                        exchange=params["exchange_id"].capitalize(),
-                        investment=params["weekly_investment"],
-                        currency=currency,
-                        short_window=params["short_window"],
-                        long_window=params["long_window"]
-                    ))
-                
-                elif strategy_name == "rsi":
-                    st.markdown("""
-                    #### RSI Strategy Implementation:
-                    1. **Set Up Exchange Account**: Create an account on {exchange}.
-                    2. **Allocate Base Investment**: Reserve {investment:.2f} {currency} per week.
-                    3. **Calculate RSI**: Use a {period}-day period to calculate the Relative Strength Index.
-                    4. **Increase Investment**: When RSI is below {oversold}, increase investment up to {max_factor}x.
-                    5. **Decrease Investment**: When RSI is above {overbought}, reduce investment to as low as {min_factor}x.
-                    
-                    **Tip**: Many cryptocurrency price tracking websites display RSI indicators for free.
-                    """.format(
-                        exchange=params["exchange_id"].capitalize(),
-                        investment=params["weekly_investment"],
-                        currency=currency,
-                        period=params["rsi_period"],
-                        oversold=params["oversold_threshold"],
-                        overbought=params["overbought_threshold"],
-                        max_factor=params.get("max_increase_factor", "2.5"),
-                        min_factor=params.get("min_decrease_factor", "0.5")
-                    ))
-                
-                else:  # volatility
-                    st.markdown("""
-                    #### Volatility Strategy Implementation:
-                    1. **Set Up Exchange Account**: Create an account on {exchange}.
-                    2. **Allocate Base Investment**: Reserve {investment:.2f} {currency} per week.
-                    3. **Track Volatility**: Monitor {window}-day price volatility.
-                    4. **Compare to Average**: Compare current volatility to the {lookback}-day average.
-                    5. **Adjust Investment**: When volatility is {threshold}x average, increase investment up to {max_factor}x.
-                    
-                    **Tip**: Set price alerts for sudden volatility increases to time your increased investments.
-                    """.format(
-                        exchange=params["exchange_id"].capitalize(),
-                        investment=params["weekly_investment"],
-                        currency=currency,
-                        window=params["vol_window"],
-                        threshold=params["vol_threshold"],
-                        lookback=params.get("lookback_period", "90"),
-                        max_factor=params.get("max_increase_factor", "3.0")
-                    ))
-                
-                # Add a "Download Strategy Guide" button (this would be a real feature in the future)
-                if st.button(f"Download {strategy_name.upper()} Strategy Guide", key=f"download_{strategy_name}"):
-                    st.info("Strategy guide download feature coming soon!")
-                    
-                # If not the most efficient, add a comparison
-                if strategy_name != most_efficient_strategy:
-                    most_efficient_result = results[most_efficient_strategy]
-                    most_efficient_performance = most_efficient_result["performance"]
-                    most_efficient_params = most_efficient_result["best_params"]
-                    
-                    most_weekly = most_efficient_params.get("weekly_investment", 0)
-                    most_total = most_weekly * 52
-                    most_efficiency = most_efficient_performance["final_btc"] / most_total if most_total > 0 else 0
-                    
-                    # Calculate percentage difference
-                    efficiency_diff = ((efficiency / most_efficiency) - 1) * 100
-                    
-                    st.markdown("### Comparison to Most Efficient Strategy")
-                    if efficiency_diff > 0:
-                        st.success(f"This strategy is {abs(efficiency_diff):.2f}% MORE efficient than {most_efficient_strategy.upper()}!")
-                    else:
-                        st.warning(f"This strategy is {abs(efficiency_diff):.2f}% LESS efficient than {most_efficient_strategy.upper()}.")
+        with col2:
+            st.markdown("### Performance")
+            st.info(f"**Efficiency:** {efficiency:.8f} BTC/{currency}")
+            st.info(f"**Final BTC:** {performance['final_btc']:.8f} BTC")
+            st.info(f"**Total Investment:** {total_investment:.2f} {currency}")
+            if "max_drawdown" in performance:
+                st.info(f"**Max Drawdown:** {performance['max_drawdown']*100:.2f}%")
+            if "sortino_ratio" in performance:
+                st.info(f"**Sortino Ratio:** {performance['sortino_ratio']:.2f}")
+        
+        # Add implementation tutorial
+        st.markdown("### How to Implement This Strategy")
+        
+        # Different tutorial based on strategy
+        if strategy_name == "dca":
+            st.markdown("""
+            #### Dollar Cost Averaging Implementation:
+            1. **Set Up Exchange Account**: Create an account on {exchange}.
+            2. **Schedule Regular Deposits**: Deposit {investment:.2f} {currency} each week.
+            3. **Automate Purchases**: Set up automatic purchases on {day} each week.
+            4. **Enable Loyalty Discount**: {discount_instructions}.
+            5. **Secure Your Bitcoin**: Consider transferring to a hardware wallet monthly.
+            
+            **Tip**: Many exchanges let you schedule automatic purchases, making this strategy extremely simple to implement.
+            """.format(
+                exchange=params["exchange_id"].capitalize(),
+                investment=params["weekly_investment"],
+                currency=currency,
+                day=params.get("day_of_week", "Sunday"),
+                discount_instructions="Enable the exchange's token discount program" if params["use_discount"] else "No discount required for this strategy"
+            ))
+        
+        elif strategy_name == "maco":
+            st.markdown("""
+            #### Moving Average Crossover Implementation:
+            1. **Set Up Exchange Account**: Create an account on {exchange}.
+            2. **Allocate Investment Fund**: Set aside {investment:.2f} {currency} per week.
+            3. **Track Moving Averages**: Monitor {short_window}-day and {long_window}-day moving averages.
+            4. **Place Buy Orders**: Buy Bitcoin when short-term average crosses above long-term average.
+            5. **Adjust Investment Size**: Invest more when crossing signal is strong (>1% difference).
+            
+            **Tip**: Use a cryptocurrency portfolio app or spreadsheet with auto-calculation to track the moving averages easily.
+            """.format(
+                exchange=params["exchange_id"].capitalize(),
+                investment=params["weekly_investment"],
+                currency=currency,
+                short_window=params["short_window"],
+                long_window=params["long_window"]
+            ))
+        
+        elif strategy_name == "rsi":
+            st.markdown("""
+            #### RSI Strategy Implementation:
+            1. **Set Up Exchange Account**: Create an account on {exchange}.
+            2. **Allocate Base Investment**: Reserve {investment:.2f} {currency} per week.
+            3. **Calculate RSI**: Use a {period}-day period to calculate the Relative Strength Index.
+            4. **Increase Investment**: When RSI is below {oversold}, increase investment up to {max_factor}x.
+            5. **Decrease Investment**: When RSI is above {overbought}, reduce investment to as low as {min_factor}x.
+            
+            **Tip**: Many cryptocurrency price tracking websites display RSI indicators for free.
+            """.format(
+                exchange=params["exchange_id"].capitalize(),
+                investment=params["weekly_investment"],
+                currency=currency,
+                period=params["rsi_period"],
+                oversold=params["oversold_threshold"],
+                overbought=params["overbought_threshold"],
+                max_factor=params.get("max_increase_factor", "2.5"),
+                min_factor=params.get("min_decrease_factor", "0.5")
+            ))
+        
+        else:  # volatility
+            st.markdown("""
+            #### Volatility Strategy Implementation:
+            1. **Set Up Exchange Account**: Create an account on {exchange}.
+            2. **Allocate Base Investment**: Reserve {investment:.2f} {currency} per week.
+            3. **Track Volatility**: Monitor {window}-day price volatility.
+            4. **Compare to Average**: Compare current volatility to the {lookback}-day average.
+            5. **Adjust Investment**: When volatility is {threshold}x average, increase investment up to {max_factor}x.
+            
+            **Tip**: Set price alerts for sudden volatility increases to time your increased investments.
+            """.format(
+                exchange=params["exchange_id"].capitalize(),
+                investment=params["weekly_investment"],
+                currency=currency,
+                window=params["vol_window"],
+                threshold=params["vol_threshold"],
+                lookback=params.get("lookback_period", "90"),
+                max_factor=params.get("max_increase_factor", "3.0")
+            ))
+        
+        # Add a "Download Strategy Guide" button (this would be a real feature in the future)
+        if st.button(f"Download {strategy_name.upper()} Strategy Guide", key=f"download_{strategy_name}"):
+            st.info("Strategy guide download feature coming soon!")
+            
+        # If not the most efficient, add a comparison
+        if strategy_name != most_efficient_strategy:
+            most_efficient_result = results[most_efficient_strategy]
+            most_efficient_performance = most_efficient_result["performance"]
+            most_efficient_params = most_efficient_result["best_params"]
+            
+            most_weekly = most_efficient_params.get("weekly_investment", 0)
+            most_total = most_weekly * 52
+            most_efficiency = most_efficient_performance["final_btc"] / most_total if most_total > 0 else 0
+            
+            # Calculate percentage difference
+            efficiency_diff = ((efficiency / most_efficiency) - 1) * 100
+            
+            st.markdown("### Comparison to Most Efficient Strategy")
+            if efficiency_diff > 0:
+                st.success(f"This strategy is {abs(efficiency_diff):.2f}% MORE efficient than {most_efficient_strategy.upper()}!")
+            else:
+                st.warning(f"This strategy is {abs(efficiency_diff):.2f}% LESS efficient than {most_efficient_strategy.upper()}.")
 
 
 if __name__ == "__main__":
