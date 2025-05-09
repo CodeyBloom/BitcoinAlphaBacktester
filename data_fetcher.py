@@ -262,14 +262,32 @@ def fetch_bitcoin_price_data(start_date_str, end_date_str, currency="AUD"):
     # Try to read from local Arrow file first
     arrow_path = get_arrow_path(currency)
     df = read_from_arrow_file(arrow_path)
+    filtered_df = None  # Initialize to avoid unbound variable
     
     if df is not None:
         # Filter to requested date range
         filtered_df = filter_dataframe_by_date_range(df, start_date, end_date)
         
-        if len(filtered_df) > 0:
+        # Check if we have enough data in the local file
+        if filtered_df is not None and len(filtered_df) >= 30:  # At least 30 days for meaningful backtest
             print(f"Using local data with {len(filtered_df)} days in the requested date range")
             return filtered_df
+        else:
+            days = 0 if filtered_df is None else len(filtered_df)
+            print(f"Local data has only {days} days, which is insufficient. Trying API...")
     
     # If local data not available or insufficient, fetch from API
-    return fetch_from_api(start_date, end_date, currency)
+    api_df = fetch_from_api(start_date, end_date, currency)
+    
+    # If API fetch succeeds, return the data
+    if api_df is not None and len(api_df) > 0:
+        return api_df
+    
+    # If API fetch fails, return whatever local data we have (even if it's insufficient)
+    # The calling function will handle this case
+    if filtered_df is not None and len(filtered_df) > 0:
+        print(f"API fetch failed. Using limited local data ({len(filtered_df)} days) as fallback.")
+        return filtered_df
+    
+    # If no data at all
+    return None

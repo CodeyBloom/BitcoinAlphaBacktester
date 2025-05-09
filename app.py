@@ -637,135 +637,143 @@ else:  # "Backtest Strategies"
                     # Create a dictionary to store strategy results
                     strategy_results = {}
                     
-                    # Check if enough data for ML strategy - require at least 30 days for XGBoost
-                    if use_xgboost_ml and len(df) < 30:
-                        st.warning("XGBoost ML strategy requires at least 30 days of data. This strategy will be disabled.")
-                        use_xgboost_ml = False
+                    # Check if we have enough data for a meaningful backtest
+                    have_sufficient_data = len(df) >= 30
+                    if not have_sufficient_data:
+                        st.error(f"Insufficient data for backtesting - only {len(df)} days available. At least 30 days are required.")
+                        st.info("This could be due to limited data in the local file or API rate limiting. Try a shorter time period or try again later.")
                     
-                    # Get exchange parameters
-                    exchange_id = None if selected_exchange == "None" else selected_exchange
-                    
-                    # Add exchange information to the sidebar if selected
-                    if exchange_id:
-                        st.sidebar.info(f"Running strategies with **{exchange_id}** exchange fees" + 
-                                     (" with loyalty discounts" if use_exchange_discount else ""))
-                    
-                    # Collect strategy selections
-                    strategy_selections = {
-                        "dca": True,  # Always run as baseline
-                        "value_avg": use_value_avg,
-                        "maco": use_maco,
-                        "rsi": use_rsi,
-                        "volatility": use_volatility,
-                        "xgboost_ml": use_xgboost_ml
-                    }
-                    
-                    # Run the strategies using the pure function
-                    with st.spinner("Running selected strategies..."):
-                        try:
-                            strategy_results, performance_metrics = run_selected_strategies(
-                                df, 
-                                strategy_selections, 
-                                strategy_params, 
-                                weekly_investment,
-                                exchange_id,
-                                use_exchange_discount
-                            )
-                        except ZeroDivisionError:
-                            st.error("Division by zero error occurred. This is likely due to insufficient data for the selected strategies.")
-                            # Fall back to just DCA strategy
-                            strategy_selections = {"dca": True}
-                            strategy_results, performance_metrics = run_selected_strategies(
-                                df, 
-                                {"dca": True},  # Only run DCA
-                                {}, 
-                                weekly_investment,
-                                exchange_id,
-                                use_exchange_discount
-                            )
-                            
-                    # Show exchange information if used
-                    if exchange_id:
-                        # Add exchange fee info to metrics
-                        try:
-                            from fee_models import get_exchange_fee, TransactionType
-                            fee_percentage = get_exchange_fee(
-                                exchange_id, 
-                                TransactionType.BUY, 
-                                use_discount=use_exchange_discount
-                            )
-                            st.info(f"Exchange **{exchange_id}** applied with {fee_percentage*100:.2f}% fees" +
-                                  (" (including loyalty discounts)" if use_exchange_discount else ""))
-                        except Exception as e:
-                            st.warning(f"Could not display exchange fee information: {str(e)}")
-                    
-                    # The Lump Sum and Buy the Dip strategies have been removed in the refactored version
-                    
-                    # Enhance the metrics with additional information for display
-                    for strategy_name, strategy_df in strategy_results.items():
-                        if strategy_name in performance_metrics:
-                            total_invested = strategy_df["cumulative_investment"].tail(1).item()
-                            performance_metrics[strategy_name]["total_invested"] = total_invested
-                            
-                            # Calculate BTC per currency (efficiency metric)
-                            final_btc = performance_metrics[strategy_name]["final_btc"]
-                            # Use standard amount (100) for consistent display
-                            standard_amount = 100.0
-                            performance_metrics[strategy_name]["btc_per_currency"] = final_btc / total_invested * standard_amount
-                    
-                    # Display summary of results
-                    st.header("Backtesting Results")
-                    
-                    # Create a DataFrame for strategy comparison (similar to optimization view)
-                    comparison_data = []
-                    for strategy_name, metrics in performance_metrics.items():
-                        # Format strategy name for display
-                        display_name = strategy_name
+                    # Skip all the strategy execution if we don't have enough data
+                    if have_sufficient_data:
+                        # For XGBoost specifically, ensure we have several months of data
+                        if use_xgboost_ml and len(df) < 90:
+                            st.warning("XGBoost ML strategy performs best with at least 90 days of data. This strategy will be disabled.")
+                            use_xgboost_ml = False
                         
-                        # Find the most efficient strategy
-                        if len(performance_metrics) > 1:
-                            most_efficient_strategy = max(
-                                performance_metrics.items(),
-                                key=lambda x: x[1]["btc_per_currency"]
-                            )[0]
+                        # Get exchange parameters
+                        exchange_id = None if selected_exchange == "None" else selected_exchange
+                        
+                        # Add exchange information to the sidebar if selected
+                        if exchange_id:
+                            st.sidebar.info(f"Running strategies with **{exchange_id}** exchange fees" + 
+                                         (" with loyalty discounts" if use_exchange_discount else ""))
+                        
+                        # Collect strategy selections
+                        strategy_selections = {
+                            "dca": True,  # Always run as baseline
+                            "value_avg": use_value_avg,
+                            "maco": use_maco,
+                            "rsi": use_rsi,
+                            "volatility": use_volatility,
+                            "xgboost_ml": use_xgboost_ml
+                        }
+                        
+                        # Run the strategies using the pure function
+                        with st.spinner("Running selected strategies..."):
+                            try:
+                                strategy_results, performance_metrics = run_selected_strategies(
+                                    df, 
+                                    strategy_selections, 
+                                    strategy_params, 
+                                    weekly_investment,
+                                    exchange_id,
+                                    use_exchange_discount
+                                )
+                            except ZeroDivisionError:
+                                st.error("Division by zero error occurred. This is likely due to insufficient data for the selected strategies.")
+                                # Fall back to just DCA strategy
+                                strategy_selections = {"dca": True}
+                                strategy_results, performance_metrics = run_selected_strategies(
+                                    df, 
+                                    {"dca": True},  # Only run DCA
+                                    {}, 
+                                    weekly_investment,
+                                    exchange_id,
+                                    use_exchange_discount
+                                )
                             
-                            if strategy_name == most_efficient_strategy:
-                                display_name += " (MOST EFFICIENT)"
+                        # Show exchange information if used
+                        if exchange_id:
+                            # Add exchange fee info to metrics
+                            try:
+                                from fee_models import get_exchange_fee, TransactionType
+                                fee_percentage = get_exchange_fee(
+                                    exchange_id, 
+                                    TransactionType.BUY, 
+                                    use_discount=use_exchange_discount
+                                )
+                                st.info(f"Exchange **{exchange_id}** applied with {fee_percentage*100:.2f}% fees" +
+                                      (" (including loyalty discounts)" if use_exchange_discount else ""))
+                            except Exception as e:
+                                st.warning(f"Could not display exchange fee information: {str(e)}")
                         
-                        # Store actual values for sorting
-                        efficiency_val = metrics['btc_per_currency']
+                        # The Lump Sum and Buy the Dip strategies have been removed in the refactored version
                         
-                        comparison_data.append({
-                            "Strategy": display_name,
-                            f"Weekly Investment ({investment_currency})": weekly_investment,
-                            f"Total Investment ({investment_currency})": metrics['total_invested'],
-                            "BTC Accumulated": metrics['final_btc'],
-                            f"Efficiency (BTC/{investment_currency})": efficiency_val,
-                            "Max Drawdown": metrics['max_drawdown']*100,
-                            "Sortino Ratio": metrics['sortino_ratio'],
-                            "Efficiency_Sort": efficiency_val  # For sorting
-                        })
+                        # Enhance the metrics with additional information for display
+                        for strategy_name, strategy_df in strategy_results.items():
+                            if strategy_name in performance_metrics:
+                                total_invested = strategy_df["cumulative_investment"].tail(1).item()
+                                performance_metrics[strategy_name]["total_invested"] = total_invested
+                                
+                                # Calculate BTC per currency (efficiency metric)
+                                final_btc = performance_metrics[strategy_name]["final_btc"]
+                                # Use standard amount (100) for consistent display
+                                standard_amount = 100.0
+                                performance_metrics[strategy_name]["btc_per_currency"] = final_btc / total_invested * standard_amount
                     
-                    # Convert to DataFrame for display
-                    import pandas as pd
-                    comparison_df = pd.DataFrame(comparison_data)
-                    
-                    # Sort by efficiency descending
-                    comparison_df = comparison_df.sort_values("Efficiency_Sort", ascending=False)
-                    
-                    # Format numeric columns
-                    comparison_df[f"Weekly Investment ({investment_currency})"] = comparison_df[f"Weekly Investment ({investment_currency})"].map(lambda x: f"{x:.2f}")
-                    comparison_df[f"Total Investment ({investment_currency})"] = comparison_df[f"Total Investment ({investment_currency})"].map(lambda x: f"{x:.2f}")
-                    comparison_df["BTC Accumulated"] = comparison_df["BTC Accumulated"].map(lambda x: f"{x:.8f}")
-                    comparison_df[f"Efficiency (BTC/{investment_currency})"] = comparison_df[f"Efficiency (BTC/{investment_currency})"].map(lambda x: f"{x:.8f}")
-                    comparison_df["Max Drawdown"] = comparison_df["Max Drawdown"].map(lambda x: f"{x:.2f}%")
-                    comparison_df["Sortino Ratio"] = comparison_df["Sortino Ratio"].map(lambda x: f"{x:.2f}")
-                    
-                    # Drop the sorting column
-                    comparison_df = comparison_df.drop("Efficiency_Sort", axis=1)
-                    
-                    # Display the comparison table
-                    st.dataframe(comparison_df, use_container_width=True, hide_index=True)
+                        # Display summary of results
+                        st.header("Backtesting Results")
+                        
+                        # Create a DataFrame for strategy comparison (similar to optimization view)
+                        comparison_data = []
+                        for strategy_name, metrics in performance_metrics.items():
+                            # Format strategy name for display
+                            display_name = strategy_name
+                            
+                            # Find the most efficient strategy
+                            if len(performance_metrics) > 1:
+                                most_efficient_strategy = max(
+                                    performance_metrics.items(),
+                                    key=lambda x: x[1]["btc_per_currency"]
+                                )[0]
+                                
+                                if strategy_name == most_efficient_strategy:
+                                    display_name += " (MOST EFFICIENT)"
+                            
+                            # Store actual values for sorting
+                            efficiency_val = metrics['btc_per_currency']
+                            
+                            comparison_data.append({
+                                "Strategy": display_name,
+                                f"Weekly Investment ({investment_currency})": weekly_investment,
+                                f"Total Investment ({investment_currency})": metrics['total_invested'],
+                                "BTC Accumulated": metrics['final_btc'],
+                                f"Efficiency (BTC/{investment_currency})": efficiency_val,
+                                "Max Drawdown": metrics['max_drawdown']*100,
+                                "Sortino Ratio": metrics['sortino_ratio'],
+                                "Efficiency_Sort": efficiency_val  # For sorting
+                            })
+                        
+                        # Convert to DataFrame for display
+                        import pandas as pd
+                        comparison_df = pd.DataFrame(comparison_data)
+                        
+                        # Sort by efficiency descending
+                        comparison_df = comparison_df.sort_values("Efficiency_Sort", ascending=False)
+                        
+                        # Format numeric columns
+                        comparison_df[f"Weekly Investment ({investment_currency})"] = comparison_df[f"Weekly Investment ({investment_currency})"].map(lambda x: f"{x:.2f}")
+                        comparison_df[f"Total Investment ({investment_currency})"] = comparison_df[f"Total Investment ({investment_currency})"].map(lambda x: f"{x:.2f}")
+                        comparison_df["BTC Accumulated"] = comparison_df["BTC Accumulated"].map(lambda x: f"{x:.8f}")
+                        comparison_df[f"Efficiency (BTC/{investment_currency})"] = comparison_df[f"Efficiency (BTC/{investment_currency})"].map(lambda x: f"{x:.8f}")
+                        comparison_df["Max Drawdown"] = comparison_df["Max Drawdown"].map(lambda x: f"{x:.2f}%")
+                        comparison_df["Sortino Ratio"] = comparison_df["Sortino Ratio"].map(lambda x: f"{x:.2f}")
+                        
+                        # Drop the sorting column
+                        comparison_df = comparison_df.drop("Efficiency_Sort", axis=1)
+                        
+                        # Display the comparison table
+                        st.dataframe(comparison_df, use_container_width=True, hide_index=True)
                     
                     # Plot the results
                     st.header("Strategy Performance Visualization")
