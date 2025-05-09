@@ -17,12 +17,16 @@ Since we now have a comprehensive `run_real_optimizations.py` script:
 
 - `scripts/run_all_optimizations.py`: Functionality is now covered by `run_real_optimizations.py`
 
-### 3. Sample Data No Longer Needed
+### 3. Redundant Data Files
 
-If you have sample or test data files that aren't used in production:
+These data files are duplicates or no longer needed:
 
-- Any sample CSV files in `data/` directory
-- Backup or duplicate optimization files
+- `data/bitcoin_prices_usd.arrow`: We're only using AUD data as per requirements
+- Duplicate optimization files in `data/optimizations/` with different date formats (08052025 vs 09052025)
+
+### 4. Duplicate Data in scripts/data/
+
+- The `scripts/data/` directory contains duplicate optimization files that are already in `data/optimizations/`
 
 ## Safe Removal Process
 
@@ -63,8 +67,55 @@ If you have sample or test data files that aren't used in production:
 
 ## Implementation Plan
 
-1. First, back up any files to be removed (just in case)
-2. Remove the deprecated scripts
-3. Update documentation to reflect the changes
-4. Run the application to ensure everything still works properly
-5. Commit the changes to the repository
+### Phase 1: Script Cleanup
+
+```bash
+# Create backup directory
+mkdir -p backup/scripts
+
+# Back up scripts before removal
+cp scripts/fetch_10yr_bitcoin_data.py backup/scripts/
+cp scripts/update_bitcoin_data.py backup/scripts/
+cp scripts/run_all_optimizations.py backup/scripts/
+
+# Remove redundant scripts
+git rm scripts/fetch_10yr_bitcoin_data.py
+git rm scripts/update_bitcoin_data.py
+git rm scripts/run_all_optimizations.py
+
+# Commit changes
+git commit -m "Remove deprecated scripts to clean up codebase"
+```
+
+### Phase 2: Data File Cleanup
+
+```bash
+# Create backup directory
+mkdir -p backup/data
+
+# Back up data files before removal
+cp data/bitcoin_prices_usd.arrow backup/data/
+
+# Remove redundant data files
+git rm data/bitcoin_prices_usd.arrow
+
+# Remove scripts/data directory which has duplicates
+git rm -r scripts/data
+
+# Commit changes
+git commit -m "Remove redundant data files to clean up repository"
+```
+
+### Phase 3: Cleanup Verification
+
+1. Restart the application
+2. Verify all functionality works as expected
+3. Run tests to ensure nothing is broken
+4. Update documentation to reflect the changes
+
+### Phase 4: Optimization Consolidation (Future Work)
+
+1. Merge `generate_optimizations_for_periods.py` and `generate_sample_optimizations.py`
+2. Update GitHub Actions workflow to use the consolidated script
+3. Test the workflow
+4. Commit the changes
