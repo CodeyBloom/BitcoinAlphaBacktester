@@ -2,13 +2,3 @@
 headless = true
 address = "0.0.0.0"
 port = 5000
-
-[theme]
-primaryColor = "#f2a900"  # Bitcoin orange
-backgroundColor = "#ffffff"
-secondaryBackgroundColor = "#f0f2f6"
-textColor = "#262730"
-font = "sans serif"
-
-[browser]
-gatherUsageStats = false

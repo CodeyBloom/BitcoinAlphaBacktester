@@ -13,7 +13,6 @@ import polars as pl
 import os
 import subprocess
 import sys
-import numpy as np
 
 # Import optimization generator functions from scripts
 from scripts.generate_sample_optimizations import (
@@ -26,21 +25,6 @@ from scripts.generate_sample_optimizations import (
 from datetime import timedelta
 from pathlib import Path
 
-# Import UI components
-from ui_components import (
-    strategy_card,
-    efficiency_chart,
-    metrics_dashboard,
-    strategy_comparison,
-    implementation_guide
-)
-
-# Load custom CSS
-def load_custom_css():
-    """Load custom CSS for consistent styling"""
-    with open('.streamlit/custom.css') as f:
-        st.markdown(f'<style>{f.read()}</style>', unsafe_allow_html=True)
-
 # Create a directory for storing optimization results if it doesn't exist
 OPTIMIZATION_DIR = "data/optimizations"
 os.makedirs(OPTIMIZATION_DIR, exist_ok=True)
@@ -49,9 +33,6 @@ os.makedirs(OPTIMIZATION_DIR, exist_ok=True)
 
 def run_optimizer_page():
     """Run the strategy optimizer page"""
-    
-    # Load custom CSS
-    load_custom_css()
     
     st.title("Bitcoin Strategy Optimizer")
     
