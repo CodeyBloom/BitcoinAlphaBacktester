@@ -33,6 +33,16 @@ class MockSt:
         self.sidebar_calls = []
         self.dataframe_calls = []
         self.expander_calls = []
+        self.plotly_calls = []
+        self.button_calls = []
+        self.selectbox_calls = []
+        
+        # Add session_state as a dictionary that can be used in tests
+        self.session_state = {
+            "current_time_period": "1 Year",
+            "all_optimization_results": {},
+            "most_efficient_strategy": "dca"
+        }
         
     def metric(self, label, value):
         self.metrics[label] = value
@@ -64,8 +74,23 @@ class MockSt:
     def columns(self, n):
         return [self] * n  # Return list of self as columns
         
-    def dataframe(self, df, use_container_width=False):
+    def dataframe(self, df, use_container_width=False, height=None):
         self.dataframe_calls.append(df)
+        
+    def write(self, text):
+        # Can be used to examine write calls if needed
+        pass
+        
+    def plotly_chart(self, fig, use_container_width=False):
+        self.plotly_calls.append(fig)
+        
+    def button(self, label, type=None, key=None, help=None):
+        self.button_calls.append(label)
+        return False  # Default to not pressed
+        
+    def selectbox(self, label, options, index=0, key=None):
+        self.selectbox_calls.append((label, options))
+        return options[index]
         
     def expander(self, text):
         self.expander_calls.append(text)
@@ -76,6 +101,15 @@ class MockSt:
         
     def __exit__(self, *args):
         pass
+        
+    def spinner(self, text):
+        # Mock the spinner context manager
+        class MockSpinner:
+            def __enter__(self):
+                return None
+            def __exit__(self, *args):
+                pass
+        return MockSpinner()
         
     class sidebar:
         @staticmethod
@@ -89,6 +123,10 @@ class MockSt:
         @staticmethod
         def checkbox(label, value=False):
             return value
+            
+        @staticmethod
+        def button(label, type=None, key=None, help=None):
+            return False  # Default to not pressed
 
 # Create a fixture for the mock streamlit
 @pytest.fixture
@@ -163,7 +201,7 @@ def test_display_optimization_results_single_strategy(mock_st):
     
     # Assertions
     assert "DCA" in mock_st.subheader_calls[0]
-    assert "Efficiency" in mock_st.metrics
+    assert f"Efficiency (BTC per AUD)" in mock_st.metrics
     assert "Final BTC Holdings" in mock_st.metrics
     assert "Total Investment" in mock_st.metrics
 
