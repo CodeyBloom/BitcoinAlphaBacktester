@@ -13,8 +13,7 @@ from strategies import (
     value_averaging_strategy, 
     maco_strategy,
     rsi_strategy, 
-    volatility_strategy,
-    xgboost_strategy
+    volatility_strategy
 )
 from metrics import calculate_max_drawdown, calculate_sortino_ratio
 from visualizations import (
@@ -108,23 +107,7 @@ def run_selected_strategies(df, strategy_selections, strategy_params,
             vol_threshold
         )
     
-    # Run XGBoost if selected
-    if strategy_selections.get("xgboost", False):
-        xgb_params = strategy_params.get("xgboost", {})
-        prediction_horizon = xgb_params.get("prediction_horizon", 7)
-        training_days = xgb_params.get("training_days", 365)
-        max_investment_factor = xgb_params.get("max_investment_factor", 2.0)
-        min_investment_factor = xgb_params.get("min_investment_factor", 0.5)
-        results["XGBoost ML"] = xgboost_strategy(
-            df.clone(),
-            weekly_investment,
-            prediction_horizon,
-            training_days,
-            max_investment_factor,
-            min_investment_factor,
-            exchange_id,
-            use_exchange_discount
-        )
+
     
     # Calculate metrics for each strategy
     metrics = {}
@@ -229,27 +212,7 @@ def run_strategies_with_parameters(df, strategies_with_params):
                 vol_threshold
             )
         
-        elif strategy_id == "xgboost":
-            weekly_investment = params.get("weekly_investment", 100.0)
-            prediction_horizon = params.get("prediction_horizon", 7)
-            training_days = params.get("training_days", 365)
-            max_investment_factor = params.get("max_investment_factor", 2.0)
-            min_investment_factor = params.get("min_investment_factor", 0.5)
-            exchange_id = params.get("exchange_id")
-            use_discount = params.get("use_discount", False)
-            window_sizes = params.get("window_sizes", [7, 14, 30])
-            
-            results[strategy_name] = xgboost_strategy(
-                df.clone(), 
-                weekly_investment,
-                prediction_horizon,
-                training_days,
-                max_investment_factor,
-                min_investment_factor,
-                exchange_id,
-                use_discount,
-                window_sizes
-            )
+
     
     # Calculate performance metrics
     metrics = {}
@@ -311,17 +274,7 @@ def get_strategy_parameters(strategy_name):
             "vol_window": 14,
             "vol_threshold": 1.5
         }
-    elif strategy_name == "xgboost":
-        return {
-            "weekly_investment": 100.0,
-            "exchange_id": None,
-            "use_discount": False,
-            "prediction_horizon": 7,
-            "training_days": 365,
-            "max_investment_factor": 2.0,
-            "min_investment_factor": 0.5,
-            "window_sizes": [7, 14, 30]
-        }
+
     else:
         # Return empty dict for unknown strategies
         return {}
@@ -545,7 +498,7 @@ else:  # "Backtest Strategies"
     use_maco = st.sidebar.checkbox("Moving Average Crossover", value=False)
     use_rsi = st.sidebar.checkbox("RSI-Based Strategy", value=False)
     use_volatility = st.sidebar.checkbox("Volatility-Based Strategy", value=False)
-    use_xgboost = st.sidebar.checkbox("XGBoost ML Strategy", value=False)
+
 
     # Strategy parameters (only show if strategy is selected)
     strategy_params = {}
@@ -582,15 +535,7 @@ else:  # "Backtest Strategies"
             "vol_threshold": st.sidebar.slider("Volatility Threshold Multiplier", 0.5, 3.0, 1.5, 0.1)
         }
     
-    # XGBoost parameters
-    if use_xgboost:
-        st.sidebar.subheader("XGBoost ML Strategy Parameters")
-        strategy_params["xgboost"] = {
-            "prediction_horizon": st.sidebar.slider("Prediction Horizon (days)", 1, 14, 7),
-            "training_days": st.sidebar.slider("Training Days", 60, 500, 365, 30),
-            "max_investment_factor": st.sidebar.slider("Max Investment Factor", 1.0, 3.0, 2.0, 0.1),
-            "min_investment_factor": st.sidebar.slider("Min Investment Factor", 0.1, 1.0, 0.5, 0.1)
-        }
+
 
     # We've removed Lump Sum and Buy the Dip parameters in the refactored version
 
@@ -615,8 +560,7 @@ else:  # "Backtest Strategies"
         ### Volatility-Based Strategy
         Increases investment during periods of high volatility to capture potential upswings.
         
-        ### XGBoost ML Strategy
-        Uses machine learning to predict future returns and adjust investment amounts accordingly. The model is trained on historical price data and technical indicators.
+
         """)
 
     with st.expander("Performance Metrics Explained"):
@@ -667,8 +611,7 @@ else:  # "Backtest Strategies"
                         "value_avg": use_value_avg,
                         "maco": use_maco,
                         "rsi": use_rsi,
-                        "volatility": use_volatility,
-                        "xgboost": use_xgboost
+                        "volatility": use_volatility
                     }
                     
                     # Run the strategies using the pure function
