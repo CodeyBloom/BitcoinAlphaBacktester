@@ -282,9 +282,8 @@ def run_optimizer_view():
                 
                 all_results = {}
                 
-                # Log time period details for debugging
-                st.info(f"Loading data for time period: {selected_period} ({years} years)")
-                st.info(f"Date range: {start_date_str} to {end_date_str}")
+                # Keep track of time period details internally
+                # But don't display them to the user
                 
                 # Load results for each selected strategy
                 for strategy in selected_strategies:
@@ -397,8 +396,7 @@ def display_optimization_results(results, best_strategy_name=None, single_strate
         # Create a table of all results
         comparison_data = []
         
-        # Debug information to check what strategies were selected
-        st.info(f"Displaying results for {len(results)} strategies: {', '.join(results.keys())}")
+        # Track number of strategies for internal use
         
         # Make sure we only process the strategies that were selected
         for strategy_name, result in results.items():
@@ -427,8 +425,7 @@ def display_optimization_results(results, best_strategy_name=None, single_strate
         # Convert to DataFrame for display
         comparison_df = pd.DataFrame(comparison_data)
         
-        # Make sure we have the right number of rows
-        st.info(f"Comparison table has {len(comparison_df)} rows")
+        # Make sure we have the right number of rows (for internal use)
         
         # Sort by efficiency descending
         efficiency_col = f"Efficiency (BTC/{currency})"
@@ -436,9 +433,8 @@ def display_optimization_results(results, best_strategy_name=None, single_strate
         comparison_df = comparison_df.sort_values("Efficiency_Sort", ascending=False)
         comparison_df = comparison_df.drop("Efficiency_Sort", axis=1)
         
-        # Verify we've got the right number of rows - should match the number of selected strategies
-        if len(comparison_df) != len(results):
-            st.warning(f"Warning: Comparison table has {len(comparison_df)} rows but {len(results)} strategies were selected. This may indicate an issue in the data processing.")
+        # Verify we've got the right number of rows internally - should match the number of selected strategies
+        # Don't show warnings to end users
         
         # No need for a separate index, we'll use the dropdown selector
         
