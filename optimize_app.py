@@ -291,6 +291,9 @@ def run_optimizer_view():
                     if result is not None:
                         all_results[strategy] = result
                 
+                # Store results in session state so they're available after interactions
+                st.session_state["all_optimization_results"] = all_results
+                
                 # Display results
                 if len(all_results) == 1:
                     # Single strategy optimization
@@ -304,11 +307,28 @@ def run_optimizer_view():
                         key=lambda x: x[1]["performance"]["final_btc"] / (x[1]["best_params"]["weekly_investment"] * 52 * years)
                     )[0]
                     
+                    # Store most efficient strategy in session state for reference
+                    st.session_state["most_efficient_strategy"] = most_efficient_strategy
+                    
                     display_optimization_results(all_results, most_efficient_strategy, single_strategy=False, currency=currency)
                 else:
                     st.error("No optimization results could be loaded.")
+    # Check if we already have results in session state from a previous run
+    elif "all_optimization_results" in st.session_state and st.session_state["all_optimization_results"]:
+        # Use the stored results
+        all_results = st.session_state["all_optimization_results"]
+        most_efficient_strategy = st.session_state.get("most_efficient_strategy")
+        
+        # Display results
+        if len(all_results) == 1:
+            # Single strategy optimization
+            strategy = list(all_results.keys())[0]
+            display_optimization_results(all_results[strategy], single_strategy=True, currency=currency)
+        elif len(all_results) > 1:
+            # Multi-strategy comparison
+            display_optimization_results(all_results, most_efficient_strategy, single_strategy=False, currency=currency)
     else:
-        # Display instructions when no button has been pressed
+        # Display instructions when no button has been pressed and no stored results
         st.info("Select a time period and strategies from the sidebar, then click the RUN OPTIMIZATION button to view results.")
 
 
@@ -403,8 +423,8 @@ def display_optimization_results(results, best_strategy_name=None, single_strate
             weekly_investment = result["best_params"]["weekly_investment"]
             
             # Adjust weeks based on time period
-            # Extract years from strategy_name or fallback to 1
-            selected_time_period = st.session_state.get("selected_time_period", "1 Year")
+            # Get the time period from session state or fallback to 1 year
+            selected_time_period = st.session_state.get("current_time_period", "1 Year")
             years = time_periods.get(selected_time_period, 1)
             
             # Calculate total investment based on years
