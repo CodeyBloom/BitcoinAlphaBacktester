@@ -183,9 +183,9 @@ def simulate_historical_data(df, years_to_simulate=9):
     actual_returns = df["returns"].drop_nulls().to_numpy()
     
     # Use the row with the oldest date as starting point
-    oldest_row = df.sort("date").row(0)
-    oldest_date = oldest_row["date"]
-    oldest_price = oldest_row["price"]
+    sorted_df = df.sort("date")
+    oldest_date = sorted_df[0, "date"]
+    oldest_price = sorted_df[0, "price"]
     
     # Generate dates going back years_to_simulate years
     start_date = oldest_date - timedelta(days=365 * years_to_simulate)

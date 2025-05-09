@@ -174,18 +174,17 @@ def test_simulate_historical_data(sample_processed_df):
     })
     
     # Add required columns
-    large_df = large_df.with_columns([
+    large_df = large_df.with_columns(
         pl.col("date").dt.weekday().alias("day_of_week"),
         (pl.col("date").dt.weekday() == 6).alias("is_sunday"),
         pl.col("price").pct_change().fill_null(0).alias("returns")
-    ])
+    )
     
     # Add row_index
     large_df = large_df.with_row_index("row_index")
     
     # Now test with enough data
-    years_to_simulate = 0.01  # Just a few days
-    result = simulate_historical_data(large_df, years_to_simulate=years_to_simulate)
+    result = simulate_historical_data(large_df, years_to_simulate=1)
     
     # Verify structure
     assert isinstance(result, pl.DataFrame)
@@ -196,8 +195,8 @@ def test_simulate_historical_data(sample_processed_df):
     assert set(result.columns).issuperset(expected_columns)
     
     # Verify data continuity - first date in simulated should be before first date in original
-    original_first_date = large_df.sort("date").row(0)["date"]
-    result_first_date = result.sort("date").row(0)["date"]
+    original_first_date = large_df.select("date").min().item()
+    result_first_date = result.select("date").min().item()
     assert result_first_date < original_first_date
     
     # Test not enough data case (less than 360 days)
