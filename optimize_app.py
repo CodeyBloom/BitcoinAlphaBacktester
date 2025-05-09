@@ -470,7 +470,6 @@ def display_optimization_results(results, best_strategy_name=None, single_strate
         )[0]
         
         # Create a Plotly graph showing cumulative BTC over time
-        st.subheader("Cumulative BTC by Strategy")
         
         # Generate time series data for the selected time period
         selected_time_period = st.session_state.get("current_time_period", "1 Year")
@@ -553,9 +552,9 @@ def display_optimization_results(results, best_strategy_name=None, single_strate
                 hovertemplate='%{y:.8f} BTC<br>%{x|%d %b %Y}<extra></extra>'
             ))
         
-        # Update layout
+        # Update layout with no title to prevent 'undefined' text
         fig.update_layout(
-            title=None,
+            title_text='',  # Empty string instead of None
             xaxis_title="Date",
             yaxis_title="BTC Accumulated",
             legend_title="Strategies",
