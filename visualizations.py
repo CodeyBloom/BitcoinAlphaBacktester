@@ -18,6 +18,10 @@ def plot_cumulative_bitcoin(strategy_results, use_efficiency=False, currency="AU
     """
     fig = go.Figure()
     
+    # Initialize default titles
+    layout_title = "Bitcoin Strategy Results"
+    layout_y_axis = "Bitcoin Holdings (BTC)"
+    
     for strategy_name, df in strategy_results.items():
         # Convert Polars dataframe columns to lists for Plotly
         dates = df["date"].to_list()
@@ -44,8 +48,8 @@ def plot_cumulative_bitcoin(strategy_results, use_efficiency=False, currency="AU
                 )
             )
             
-            title = f"Strategy Efficiency (BTC per {weekly_investment:.0f} {currency})"
-            y_axis_title = f"BTC per {weekly_investment:.0f} {currency}"
+            layout_title = f"Strategy Efficiency (BTC per {weekly_investment:.0f} {currency})"
+            layout_y_axis = f"BTC per {weekly_investment:.0f} {currency}"
         else:
             # Plot raw BTC accumulation
             btc_values = df["cumulative_btc"].to_list()
@@ -59,14 +63,14 @@ def plot_cumulative_bitcoin(strategy_results, use_efficiency=False, currency="AU
                 )
             )
             
-            title = "Cumulative Bitcoin Holdings by Strategy"
-            y_axis_title = "Bitcoin Holdings (BTC)"
+            layout_title = "Cumulative Bitcoin Holdings by Strategy"
+            layout_y_axis = "Bitcoin Holdings (BTC)"
     
     # Add customization to the layout
     fig.update_layout(
-        title=title,
+        title=layout_title,
         xaxis_title="Date",
-        yaxis_title=y_axis_title,
+        yaxis_title=layout_y_axis,
         legend_title="Strategies",
         hovermode="x unified"
     )
