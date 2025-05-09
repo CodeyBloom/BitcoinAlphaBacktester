@@ -155,6 +155,40 @@ def test_fetch_last_year_bitcoin_data_error(mock_get):
         # Verify the function returns None on error
         assert result is None
 
+@patch("fetch_bitcoin_data.fetch_last_year_bitcoin_data")
+@patch("fetch_bitcoin_data.os.makedirs")
+@patch("builtins.print")
+def test_main_success(mock_print, mock_makedirs, mock_fetch_data, sample_processed_df):
+    """Test the main function with successful data fetch"""
+    # Setup mocks
+    mock_fetch_data.return_value = sample_processed_df
+    
+    # Call the main function
+    from fetch_bitcoin_data import main
+    main()
+    
+    # Verify makedirs was called to create data directory
+    mock_makedirs.assert_called_once_with("data", exist_ok=True)
+    
+    # Verify function calls and data saving
+    mock_fetch_data.assert_called_once_with(currency="AUD")
+    mock_print.assert_any_call(f"Fetching Bitcoin price data in AUD for the last year...")
+    
+@patch("fetch_bitcoin_data.fetch_last_year_bitcoin_data")
+@patch("builtins.print")
+def test_main_failure(mock_print, mock_fetch_data):
+    """Test the main function with failed data fetch"""
+    # Setup mock to return None (failed fetch)
+    mock_fetch_data.return_value = None
+    
+    # Call the main function
+    from fetch_bitcoin_data import main
+    main()
+    
+    # Verify function calls
+    mock_fetch_data.assert_called_once_with(currency="AUD")
+    mock_print.assert_any_call("Failed to fetch data")
+
 def test_simulate_historical_data(sample_processed_df):
     """Test simulating historical data"""
     # We need to create a larger DataFrame with at least 360 days of data
@@ -173,14 +207,14 @@ def test_simulate_historical_data(sample_processed_df):
         "price": prices
     })
     
-    # Add required columns
+    # Add required columns (ensuring all columns match the implementation)
     large_df = large_df.with_columns(
         pl.col("date").dt.weekday().alias("day_of_week"),
         (pl.col("date").dt.weekday() == 6).alias("is_sunday"),
         pl.col("price").pct_change().fill_null(0).alias("returns")
     )
     
-    # Add row_index
+    # Add row_index for compatibility with the function implementation
     large_df = large_df.with_row_index("row_index")
     
     # Now test with enough data

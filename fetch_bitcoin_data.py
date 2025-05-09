@@ -233,8 +233,32 @@ def simulate_historical_data(df, years_to_simulate=9):
         pl.col("price").pct_change().alias("returns")
     )
     
-    # Combine simulated data with actual data
-    combined_df = pl.concat([simulated_df, df])
+    # Ensure both dataframes have same schema before concat
+    orig_cols = set(df.columns)
+    sim_cols = set(simulated_df.columns)
+    
+    # Add any missing columns to simulated data
+    for col in orig_cols - sim_cols:
+        # Skip row_index as it will be added later
+        if col != "row_index":
+            if col in ["day_of_week", "is_sunday", "returns"]:
+                # These should already be computed
+                continue
+            else:
+                # For any other missing columns, add nulls
+                simulated_df = simulated_df.with_columns(
+                    pl.lit(None).alias(col)
+                )
+    
+    # Drop row_index from original df if it exists since we'll regenerate it
+    if "row_index" in df.columns:
+        df = df.drop("row_index")
+    
+    # Combine simulated data with actual data using a more relaxed schema matching
+    combined_df = pl.concat(
+        [simulated_df.drop("row_index") if "row_index" in simulated_df.columns else simulated_df, df],
+        how="vertical_relaxed"  # This allows combining different numeric types
+    )
     
     # Add row_index column
     combined_df = combined_df.with_row_index("row_index")
