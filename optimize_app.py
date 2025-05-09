@@ -85,8 +85,13 @@ def run_optimizer_view():
     # Strategy selection
     st.sidebar.header("Strategies")
     strategy_selections = {}
-    for strategy in ["dca", "maco", "rsi", "volatility"]:
-        display_name = strategy.upper() if strategy != "maco" else "MACO"
+    for strategy in ["dca", "maco", "rsi", "volatility", "xgboost_ml"]:
+        if strategy == "maco":
+            display_name = "MACO"
+        elif strategy == "xgboost_ml":
+            display_name = "XGBoost ML"
+        else:
+            display_name = strategy.upper()
         strategy_selections[strategy] = st.sidebar.checkbox(display_name, value=True)
     
     # Get selected strategies
@@ -181,6 +186,7 @@ def run_optimizer_view():
             elif strategy == "volatility":
                 create_volatility_optimization(start_date_str, end_date_str, currency_code)
                 # Generated optimization data without showing info message
+            # XGBoost ML doesn't have a generator function here, it's generated in scripts/generate_optimizations_for_periods.py
             
             # Try loading again after generating
             if os.path.exists(file_path):
@@ -248,7 +254,7 @@ def run_optimizer_view():
                     "efficiency": 0.000096
                 }
             }
-        else:  # volatility
+        elif strategy == "volatility":
             return {
                 "strategy": strategy,
                 "best_params": {
@@ -265,6 +271,24 @@ def run_optimizer_view():
                     "max_drawdown": 0.30,
                     "sortino_ratio": 1.22,
                     "efficiency": 0.000056
+                }
+            }
+        else:  # xgboost_ml
+            return {
+                "strategy": strategy,
+                "best_params": {
+                    "exchange_id": "kraken",
+                    "weekly_investment": 180.0,
+                    "use_discount": True,
+                    "training_window": 14,
+                    "prediction_threshold": 0.58,
+                    "feature_set": "price,returns,volume,volatility"
+                },
+                "performance": {
+                    "final_btc": 0.65678912,
+                    "max_drawdown": 0.24,
+                    "sortino_ratio": 1.55,
+                    "efficiency": 0.000070
                 }
             }
     
@@ -697,7 +721,7 @@ def display_optimization_results(results, best_strategy_name=None, single_strate
                 min_factor=params.get("min_decrease_factor", "0.5")
             ))
         
-        else:  # volatility
+        elif strategy_name == "volatility":
             st.markdown("""
             #### Volatility Strategy Implementation:
             1. **Set Up Exchange Account**: Create an account on {exchange}.
@@ -715,6 +739,25 @@ def display_optimization_results(results, best_strategy_name=None, single_strate
                 threshold=params["vol_threshold"],
                 lookback=params.get("lookback_period", "90"),
                 max_factor=params.get("max_increase_factor", "3.0")
+            ))
+        
+        else:  # xgboost_ml
+            st.markdown("""
+            #### XGBoost ML Strategy Implementation:
+            1. **Set Up Exchange Account**: Create an account on {exchange}.
+            2. **Allocate Base Investment**: Reserve {investment:.2f} {currency} per week.
+            3. **Gather Historical Data**: Collect {features} data points for the ML model.
+            4. **Train ML Model**: Use a {training_window}-day window to train XGBoost model.
+            5. **Make Investment Decisions**: Invest when prediction confidence exceeds {threshold}.
+            
+            **Tip**: Retraining your model periodically (e.g., monthly) can help it adapt to changing market conditions.
+            """.format(
+                exchange=params["exchange_id"].capitalize(),
+                investment=params["weekly_investment"],
+                currency=currency,
+                features=params.get("feature_set", "price,returns").replace(",", ", "),
+                training_window=params["training_window"],
+                threshold=params["prediction_threshold"]
             ))
         
         # Add a "Download Strategy Guide" button (this would be a real feature in the future)
