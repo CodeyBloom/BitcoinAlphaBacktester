@@ -26,6 +26,8 @@ from visualizations import (
 from fee_models import load_exchange_profiles, get_optimal_exchange_for_strategy
 # Import optimizer page
 from optimize_app import run_optimizer_page
+# Import story dashboard
+from story_dashboard import render_strategy_story_dashboard, get_last_price_from_results
 
 def run_selected_strategies(df, strategy_selections, strategy_params, 
                            weekly_investment, exchange_id, use_exchange_discount):
@@ -733,6 +735,10 @@ else:  # "Backtest Strategies"
                     st.subheader("Sortino Ratio Comparison")
                     sortino_fig = plot_sortino_ratio(performance_metrics)
                     st.plotly_chart(sortino_fig, use_container_width=True)
+                    
+                    # Add the new Strategy Story Dashboard
+                    st.markdown("---")
+                    render_strategy_story_dashboard(strategy_results, performance_metrics, investment_currency)
                     
                     # Display final comparisons against DCA
                     st.header("Strategy Comparison Against DCA Baseline")
