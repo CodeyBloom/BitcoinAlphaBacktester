@@ -20,22 +20,114 @@ from pathlib import Path
 OPTIMIZATION_DIR = "data/optimizations"
 os.makedirs(OPTIMIZATION_DIR, exist_ok=True)
 
-# Import the sample data generator to ensure we can generate data on demand
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), 'scripts')))
-try:
-    from generate_sample_optimizations import create_dca_optimization, create_maco_optimization, create_rsi_optimization, create_volatility_optimization
-except ImportError:
-    # If we can't import from scripts, try importing directly
-    try:
-        from scripts.generate_sample_optimizations import create_dca_optimization, create_maco_optimization, create_rsi_optimization, create_volatility_optimization
-    except ImportError:
-        # In the worst case, we'll need to define fallback data (handled below)
-        pass
+# Define functions to create sample optimization data directly in this file
+def format_date(date_obj):
+    """Format date object as DDMMYYYY string"""
+    return date_obj.strftime("%d%m%Y")
+
+def create_dca_optimization(start_date_str, end_date_str, currency="AUD"):
+    """Create sample DCA optimization results"""
+    data = {
+        "strategy": "dca",
+        "param_exchange_id": "binance",
+        "param_weekly_investment": 100.0,
+        "param_use_discount": True,
+        "param_day_of_week": "Sunday",
+        "param_frequency": "Weekly",
+        "performance_final_btc": 0.45678912,
+        "performance_max_drawdown": 0.21,
+        "performance_sortino_ratio": 1.35,
+        "performance_efficiency": 0.000087,
+        "performance_total_invested": 5200.0,
+    }
+    df = pl.DataFrame([data])
+    filename = f"dca_{start_date_str}_{end_date_str}_{currency}.arrow"
+    file_path = os.path.join(OPTIMIZATION_DIR, filename)
+    df.write_ipc(file_path)
+    print(f"Created {file_path}")
+    return file_path
+
+def create_maco_optimization(start_date_str, end_date_str, currency="AUD"):
+    """Create sample MACO optimization results"""
+    data = {
+        "strategy": "maco",
+        "param_exchange_id": "coinbase",
+        "param_weekly_investment": 150.0,
+        "param_use_discount": False,
+        "param_short_window": 15,
+        "param_long_window": 75,
+        "param_signal_threshold": 0.01,
+        "param_max_allocation": 0.8,
+        "performance_final_btc": 0.55678912,
+        "performance_max_drawdown": 0.28,
+        "performance_sortino_ratio": 1.12,
+        "performance_efficiency": 0.000071,
+        "performance_total_invested": 7800.0,
+    }
+    df = pl.DataFrame([data])
+    filename = f"maco_{start_date_str}_{end_date_str}_{currency}.arrow"
+    file_path = os.path.join(OPTIMIZATION_DIR, filename)
+    df.write_ipc(file_path)
+    print(f"Created {file_path}")
+    return file_path
+
+def create_rsi_optimization(start_date_str, end_date_str, currency="AUD"):
+    """Create sample RSI optimization results"""
+    data = {
+        "strategy": "rsi",
+        "param_exchange_id": "kraken",
+        "param_weekly_investment": 120.0,
+        "param_use_discount": True,
+        "param_rsi_period": 12,
+        "param_oversold_threshold": 28,
+        "param_overbought_threshold": 72,
+        "param_max_increase_factor": 2.5,
+        "param_min_decrease_factor": 0.5,
+        "performance_final_btc": 0.60123456,
+        "performance_max_drawdown": 0.25,
+        "performance_sortino_ratio": 1.48,
+        "performance_efficiency": 0.000096,
+        "performance_total_invested": 6240.0,
+    }
+    df = pl.DataFrame([data])
+    filename = f"rsi_{start_date_str}_{end_date_str}_{currency}.arrow"
+    file_path = os.path.join(OPTIMIZATION_DIR, filename)
+    df.write_ipc(file_path)
+    print(f"Created {file_path}")
+    return file_path
+
+def create_volatility_optimization(start_date_str, end_date_str, currency="AUD"):
+    """Create sample volatility optimization results"""
+    data = {
+        "strategy": "volatility",
+        "param_exchange_id": "binance",
+        "param_weekly_investment": 200.0,
+        "param_use_discount": True,
+        "param_vol_window": 18,
+        "param_vol_threshold": 1.75,
+        "param_max_increase_factor": 3.0,
+        "param_lookback_period": 90,
+        "performance_final_btc": 0.58123456,
+        "performance_max_drawdown": 0.30,
+        "performance_sortino_ratio": 1.22,
+        "performance_efficiency": 0.000056,
+        "performance_total_invested": 10400.0,
+    }
+    df = pl.DataFrame([data])
+    filename = f"volatility_{start_date_str}_{end_date_str}_{currency}.arrow"
+    file_path = os.path.join(OPTIMIZATION_DIR, filename)
+    df.write_ipc(file_path)
+    print(f"Created {file_path}")
+    return file_path
 
 def run_optimizer_page():
     """Run the strategy optimizer page"""
     
     st.title("Bitcoin Strategy Optimizer")
+    
+    # Add a session state for tracking if sidebar should be minimized
+    if 'sidebar_minimized' not in st.session_state:
+        st.session_state.sidebar_minimized = False
     
     # Just run the optimized view directly
     run_optimizer_view()
@@ -57,16 +149,45 @@ def run_optimizer_view():
         "10 Years": 10
     }
     
-    # Currency selection
-    currency = st.sidebar.radio("Currency", ["AUD", "USD"], index=0)
-    
-    # Time period selection
-    st.sidebar.header("Time Period")
-    selected_period = st.sidebar.radio(
-        "Select Time Period",
-        list(time_periods.keys()),
-        index=0
-    )
+    # This layout is controlled by the sidebar_minimized session state
+    if not st.session_state.sidebar_minimized:
+        # Currency selection
+        currency = st.sidebar.radio("Currency", ["AUD", "USD"], index=0)
+        
+        # Time period selection
+        st.sidebar.header("Time Period")
+        selected_period = st.sidebar.radio(
+            "Select Time Period",
+            list(time_periods.keys()),
+            index=0
+        )
+        
+        # Strategy selection
+        st.sidebar.header("Strategies")
+        strategy_selections = {}
+        for strategy in ["dca", "maco", "rsi", "volatility"]:
+            display_name = strategy.upper() if strategy != "maco" else "MACO"
+            strategy_selections[strategy] = st.sidebar.checkbox(display_name, value=True)
+        
+        # Add a red button at the bottom of the sidebar
+        st.sidebar.markdown("---")
+        if st.sidebar.button("📊 Focus on Results", type="primary", use_container_width=True):
+            # Save selections to session state
+            if 'currency' not in st.session_state:
+                st.session_state.currency = currency
+            if 'selected_period' not in st.session_state:
+                st.session_state.selected_period = selected_period
+            if 'strategy_selections' not in st.session_state:
+                st.session_state.strategy_selections = strategy_selections
+            
+            # Minimize sidebar
+            st.session_state.sidebar_minimized = True
+            st.rerun()
+    else:
+        # Use saved values from session state
+        currency = st.session_state.currency if 'currency' in st.session_state else "AUD"
+        selected_period = st.session_state.selected_period if 'selected_period' in st.session_state else list(time_periods.keys())[0]
+        strategy_selections = st.session_state.strategy_selections if 'strategy_selections' in st.session_state else {s: True for s in ["dca", "maco", "rsi", "volatility"]}
     
     # Calculate dates based on selected period
     years = time_periods[selected_period]
@@ -76,13 +197,6 @@ def run_optimizer_view():
     # Format dates for file paths and display
     start_date_str = start_date.strftime("%d%m%Y")
     end_date_str = end_date.strftime("%d%m%Y")
-    
-    # Strategy selection
-    st.sidebar.header("Strategies")
-    strategy_selections = {}
-    for strategy in ["dca", "maco", "rsi", "volatility"]:
-        display_name = strategy.upper() if strategy != "maco" else "MACO"
-        strategy_selections[strategy] = st.sidebar.checkbox(display_name, value=True)
     
     # Get selected strategies
     selected_strategies = [s for s, selected in strategy_selections.items() if selected]
@@ -273,6 +387,19 @@ def run_optimizer_view():
             if result is not None:
                 all_results[strategy] = result
         
+        # Add a button to toggle sidebar visibility (focus on results)
+        if not st.session_state.sidebar_minimized:
+            col1, col2 = st.columns([3, 1])
+            with col2:
+                if st.button("📊 Focus on Results", type="primary", use_container_width=True):
+                    st.session_state.sidebar_minimized = True
+                    st.rerun()
+        else:
+            # Add button to show sidebar again
+            if st.button("⚙️ Show Options", use_container_width=False):
+                st.session_state.sidebar_minimized = False
+                st.rerun()
+                
         # Display results
         if len(all_results) == 1:
             # Single strategy optimization
