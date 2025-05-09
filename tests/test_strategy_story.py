@@ -48,8 +48,8 @@ def sample_strategy_results():
             change = prices[-1] * 0.15  # 15% rally
         new_price = prices[-1] + change
         if new_price < 1000:
-            new_price = 1000  # Ensure price doesn't go too low
-        prices.append(new_price)
+            new_price = 1000.0  # Ensure price doesn't go too low
+        prices.append(float(new_price))
     
     # Create test data frames for DCA and another strategy
     dca_df = pl.DataFrame({
