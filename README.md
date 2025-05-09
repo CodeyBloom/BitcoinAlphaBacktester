@@ -79,6 +79,19 @@ To set up the project for local development:
    streamlit run app.py
    ```
 
+## Streamlit Cloud Deployment
+
+To deploy this application to Streamlit Cloud:
+
+1. Push this repository to GitHub (make sure it's public for the free tier)
+2. Go to [Streamlit Cloud](https://streamlit.io/cloud)
+3. Sign in with your GitHub account
+4. Click "New app"
+5. Select your repository, branch (main), and main file (app.py)
+6. Click "Deploy"
+
+Your app will be available at `https://[your-name]-[repo-name].streamlit.app`
+
 ## Project Structure
 
 - `app.py`: Main Streamlit application entry point
