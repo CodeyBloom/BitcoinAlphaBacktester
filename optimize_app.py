@@ -436,12 +436,21 @@ def display_optimization_results(results, best_strategy_name=None, single_strate
         comparison_df = comparison_df.sort_values("Efficiency_Sort", ascending=False)
         comparison_df = comparison_df.drop("Efficiency_Sort", axis=1)
         
+        # Verify we've got the right number of rows - should match the number of selected strategies
+        if len(comparison_df) != len(results):
+            st.warning(f"Warning: Comparison table has {len(comparison_df)} rows but {len(results)} strategies were selected. This may indicate an issue in the data processing.")
+        
         # No need for a separate index, we'll use the dropdown selector
         
         # Find the most efficient strategy
+        # Get the selected time period from session state
+        selected_time_period = st.session_state.get("current_time_period", "1 Year")
+        years = time_periods.get(selected_time_period, 1)
+        
+        # Calculate efficiency taking into account the correct time period
         most_efficient_strategy = max(
             results.items(),
-            key=lambda x: x[1]["performance"]["final_btc"] / (x[1]["best_params"]["weekly_investment"] * 52)
+            key=lambda x: x[1]["performance"]["final_btc"] / (x[1]["best_params"]["weekly_investment"] * 52 * years)
         )[0]
         
         # Display the comparison table without clickable highlighting
@@ -480,7 +489,10 @@ def display_optimization_results(results, best_strategy_name=None, single_strate
         
         # Calculate metrics
         weekly_investment = params.get("weekly_investment", 0)
-        weeks = 52  # Assuming one year of investment
+        # Use the same time period for total investment calculation
+        selected_time_period = st.session_state.get("current_time_period", "1 Year")
+        years = time_periods.get(selected_time_period, 1)
+        weeks = 52 * years
         total_investment = weekly_investment * weeks
         efficiency = performance["final_btc"] / total_investment if total_investment > 0 else 0
         
@@ -604,7 +616,10 @@ def display_optimization_results(results, best_strategy_name=None, single_strate
             most_efficient_params = most_efficient_result["best_params"]
             
             most_weekly = most_efficient_params.get("weekly_investment", 0)
-            most_total = most_weekly * 52
+            # Also use correct time period for comparison calculation
+            selected_time_period = st.session_state.get("current_time_period", "1 Year")
+            years = time_periods.get(selected_time_period, 1)
+            most_total = most_weekly * 52 * years
             most_efficiency = most_efficient_performance["final_btc"] / most_total if most_total > 0 else 0
             
             # Calculate percentage difference
