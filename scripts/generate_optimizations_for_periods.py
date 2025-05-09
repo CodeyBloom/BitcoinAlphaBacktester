@@ -17,7 +17,7 @@ os.makedirs(OPTIMIZATION_DIR, exist_ok=True)
 CURRENCY = "AUD"
 
 # Strategies
-STRATEGIES = ["dca", "maco", "rsi", "volatility"]
+STRATEGIES = ["dca", "maco", "rsi", "volatility", "xgboost_ml"]
 
 # Time periods
 TIME_PERIODS = {
@@ -173,6 +173,42 @@ def create_volatility_optimization(years, currency="AUD"):
     print(f"Created {file_path}")
     return file_path
 
+def create_xgboost_ml_optimization(years, currency="AUD"):
+    """Create sample XGBoost ML optimization results for a specific time period"""
+    today = datetime.now()
+    end_date = today
+    start_date = end_date.replace(year=end_date.year - years)
+    
+    start_date_str = format_date(start_date)
+    end_date_str = format_date(end_date)
+    
+    # Scale performance metrics based on time period
+    btc_accumulated = 0.24567890 * years  # More BTC for longer periods
+    efficiency = 0.000097  # Efficiency remains fairly constant
+    
+    # XGBoost ML parameters
+    data = {
+        "strategy": "xgboost_ml",
+        "param_exchange_id": "kraken",
+        "param_weekly_investment": 180.0,
+        "param_use_discount": True,
+        "param_training_window": 14,              # Training window in days
+        "param_prediction_threshold": 0.58,       # Confidence threshold for investment
+        "param_max_allocation": 2.0,              # Maximum allocation on strong predictions
+        "param_feature_set": "price,returns,volume,volatility",  # Features used for prediction
+        "performance_final_btc": btc_accumulated,
+        "performance_max_drawdown": max(0.14, min(0.47, 0.24 - (0.012 * years))),
+        "performance_sortino_ratio": 1.55 + (0.08 * years),  # Sortino ratio tends to improve with time
+        "performance_efficiency": efficiency,   # BTC per currency unit
+        "performance_total_invested": 180.0 * 52 * years,  # Weekly investment * weeks
+    }
+    df = pl.DataFrame([data])
+    filename = f"xgboost_ml_{start_date_str}_{end_date_str}_{currency}.arrow"
+    file_path = os.path.join(OPTIMIZATION_DIR, filename)
+    df.write_ipc(file_path)
+    print(f"Created {file_path}")
+    return file_path
+
 def main():
     """Generate optimization files for each time period and strategy"""
     # Clean up existing USD files (as we're focusing only on AUD)
@@ -195,6 +231,8 @@ def main():
                 create_rsi_optimization(years, CURRENCY)
             elif strategy == "volatility":
                 create_volatility_optimization(years, CURRENCY)
+            elif strategy == "xgboost_ml":
+                create_xgboost_ml_optimization(years, CURRENCY)
     
     print("\nAll optimization files generated successfully!")
 
