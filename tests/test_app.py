@@ -9,6 +9,8 @@ import polars as pl
 from datetime import datetime, timedelta
 import tempfile
 import shutil
+import subprocess
+from importlib import import_module
 
 # Add parent directory to path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))

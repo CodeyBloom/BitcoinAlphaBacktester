@@ -6,6 +6,7 @@ import pytest
 import polars as pl
 import plotly.graph_objects as go
 from datetime import datetime, timedelta
+from typing import Dict, List, Any
 
 # Import the module to test
 from visualizations import (
@@ -67,14 +68,17 @@ def test_plot_cumulative_bitcoin(sample_data):
     # Check that the figure was created
     assert isinstance(fig, go.Figure)
     
-    # Check that it has the right number of traces (one per strategy)
-    assert len(fig.data) == len(sample_data)
+    # Get trace names
+    data_traces = fig.data
+    trace_names = [trace.name for trace in data_traces]
+    strategy_names = list(sample_data.keys())
+
+    # Check that there's one trace per strategy
+    assert len(trace_names) == len(strategy_names)
     
     # Verify trace names match strategy names
-    data_traces = list(fig.data)
-    strategy_names = list(sample_data.keys())
-    for i, trace in enumerate(data_traces):
-        assert trace.name in strategy_names
+    for name in strategy_names:
+        assert name in trace_names
     
     # Check the layout has appropriate titles
     assert "Cumulative Bitcoin Holdings" in fig.layout.title.text
@@ -89,13 +93,17 @@ def test_plot_max_drawdown(sample_data):
     # Check that the figure was created
     assert isinstance(fig, go.Figure)
     
-    # Check that it has the right number of traces (one per strategy)
-    assert len(fig.data) == len(sample_data)
+    # Get trace names
+    data_traces = fig.data
+    trace_names = [trace.name for trace in data_traces]
+    strategy_names = list(sample_data.keys())
+
+    # Check that there's one trace per strategy
+    assert len(trace_names) == len(strategy_names)
     
-    # Check that each trace has the right name
-    strategy_names = set(sample_data.keys())
-    trace_names = {trace.name for trace in fig.data}
-    assert strategy_names == trace_names
+    # Verify trace names match strategy names
+    for name in strategy_names:
+        assert name in trace_names
     
     # Check the layout has appropriate titles
     assert "Maximum Drawdown" in fig.layout.title.text
