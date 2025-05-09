@@ -1,44 +1,53 @@
 """
-Domain module for Bitcoin investment strategy calculations.
+Bitcoin investment strategy calculation module.
 
-This module follows functional programming principles from "Grokking Simplicity":
-- Functions are categorized as calculations (pure functions) or actions (with side effects)
-- Data is treated as immutable
-- Complex operations are composed of smaller, reusable functions
+I wrote this to handle all the math behind the different investment strategies.
+Kept things functional because it makes testing way easier (learned this from
+reading "Grokking Simplicity" - great book btw).
+
+Most functions in here don't have side effects, making them easier to test
+and reason about. The strategy-specific functions at the bottom are a bit more
+complex but still follow the same principles.
 """
 
 import polars as pl
 import numpy as np
 from datetime import datetime
 
-# ===== CALCULATIONS (PURE FUNCTIONS) =====
+# Core calculation functions
 
 def calculate_investment_for_dca(is_sunday, weekly_investment):
     """
-    Pure function to calculate investment amount for DCA strategy.
+    Calculate how much to invest for DCA strategy.
+    
+    Pretty simple - if it's Sunday, invest the weekly amount. Otherwise, don't invest.
+    Makes it easy to do weekly investments on the same day.
     
     Args:
-        is_sunday (bool): Whether the current day is Sunday
-        weekly_investment (float): Amount to invest weekly
+        is_sunday: True if it's Sunday, False otherwise
+        weekly_investment: How much cash to invest each week
         
     Returns:
-        float: Amount to invest on this day
+        The investment amount for today (either weekly_investment or 0)
     """
     return weekly_investment if is_sunday else 0.0
 
 def calculate_btc_bought(investment, price, exchange_id=None, use_discount=False):
     """
-    Pure function to calculate BTC amount bought with a given investment,
-    accounting for exchange fees if specified.
+    Figure out how much BTC you'd get for a given investment amount.
+    
+    Takes exchange fees into account if you specify an exchange. I added this
+    after realizing fees make a big difference over time! Some exchanges 
+    take 1%+ per trade which really eats into your profits.
     
     Args:
-        investment (float): Amount invested
-        price (float): Bitcoin price
-        exchange_id (str, optional): Exchange identifier for fee calculation
-        use_discount (bool, optional): Whether to apply exchange discounts
+        investment: Amount of money you're investing
+        price: Current BTC price
+        exchange_id: Which exchange to use (affects fees)
+        use_discount: Whether to apply any available exchange discounts
         
     Returns:
-        float: Amount of BTC bought
+        How much BTC you'd actually get after fees
     """
     if price <= 0:
         return 0
@@ -81,14 +90,21 @@ def calculate_moving_average(prices, window):
 
 def calculate_rsi(prices, period=14):
     """
-    Pure function to calculate RSI values for a series of prices.
+    Calculate RSI (Relative Strength Index) from a series of prices.
+    
+    Had to debug this one a bit - the standard formula is easy to mess up.
+    Uses the Wilder's smoothing method, where:
+    1. First average is a simple average 
+    2. Subsequent averages use the smoothing formula
+    
+    Tried a few different implementations before settling on this one.
     
     Args:
-        prices (np.array): Array of price values
-        period (int): Period for RSI calculation
+        prices: Array of historical prices
+        period: RSI period (default 14 days - pretty standard)
     
     Returns:
-        np.array: Array with RSI values (same length as prices)
+        Array with RSI values (0-100 scale)
     """
     # Calculate price changes
     delta = np.zeros_like(prices)
@@ -514,16 +530,24 @@ def apply_value_averaging_strategy(df, weekly_base_investment, target_growth_rat
 
 def apply_maco_strategy(df, weekly_investment, short_window=20, long_window=100):
     """
-    Apply Moving Average Crossover strategy to price data.
+    Implements a Moving Average Crossover strategy for Bitcoin investing.
+    
+    This is a pretty classic technical analysis strategy. I went with 20/100 as
+    the default windows after backtesting different combinations. The 20-day MA
+    is responsive enough to catch trends without too much noise, while the 
+    100-day MA helps identify the longer-term market direction.
+    
+    The strategy buys when the short MA crosses above the long MA (bullish crossover)
+    and doesn't invest when the short MA is below the long MA (bearish).
     
     Args:
-        df (polars.DataFrame): Price data with 'date', 'price', 'is_sunday' columns
-        weekly_investment (float): Amount to invest weekly
-        short_window (int): Short-term moving average window in days
-        long_window (int): Long-term moving average window in days
+        df: Price data with date, price and is_sunday columns
+        weekly_investment: How much to invest each week (only invests on Sundays)
+        short_window: Short-term MA window (default: 20 days)
+        long_window: Long-term MA window (default: 100 days)
         
     Returns:
-        polars.DataFrame: DataFrame with strategy results
+        DataFrame with all the strategy calculation results
     """
     # Create a copy of the dataframe (treating data as immutable)
     df = df.clone()
