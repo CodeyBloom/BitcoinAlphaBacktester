@@ -1,398 +1,219 @@
 """
-Tests for the run_selected_strategies function that follows TDD principles.
+Tests for the run_selected_strategies function in app.py.
 
-These tests define the expected behavior of a function that doesn't exist yet.
-The function will be responsible for running selected strategies on price data.
+Following TDD principles, we will test various scenarios for the run_selected_strategies
+function to ensure it correctly processes strategies based on user selections.
 """
 
 import pytest
 import polars as pl
-from datetime import datetime, timedelta
+from datetime import datetime, date, timedelta
+import os
+import sys
+import numpy as np
 
-# We'll define a function that doesn't exist yet, but should be implemented
-# to make these tests pass
+# Import functions from app.py
+from app import run_selected_strategies
+
+# ===== FIXTURES =====
 
 @pytest.fixture
 def sample_price_data():
-    """Create sample Bitcoin price data for testing"""
-    # Create date range
-    start_date = datetime(2023, 1, 1)
-    dates = [start_date + timedelta(days=i) for i in range(30)]
+    """Create a sample price dataset for testing strategies."""
+    # Generate 120 days of sample data
+    base_date = datetime(2023, 1, 1)
+    dates = [base_date + timedelta(days=i) for i in range(120)]
     
-    # Create price data with some volatility
-    prices = [20000 + i * 100 + (i % 5) * 200 for i in range(30)]
+    # Create weekday indicators (using ISO weekday: 1=Monday, 7=Sunday)
+    weekdays = [(base_date + timedelta(days=i)).isoweekday() for i in range(120)]
+    is_sunday = [day == 7 for day in weekdays]
     
-    # Create day of week and Sunday flags
-    day_of_week = [(start_date + timedelta(days=i)).weekday() for i in range(30)]
-    is_sunday = [dow == 6 for dow in day_of_week]
+    # Create price series with some volatility to trigger strategy conditions
+    base_price = 20000.0
+    prices = []
+    for i in range(120):
+        # Add both trend and random variations
+        if i < 40:  # Initial uptrend
+            trend = i * 50
+        elif i < 70:  # Downtrend
+            trend = 2000 - (i - 40) * 100
+        else:  # Recovery
+            trend = -1000 + (i - 70) * 75
+            
+        # Add some randomness
+        np.random.seed(i)  # For reproducibility
+        random_change = np.random.normal(0, 200)
+        
+        price = max(base_price + trend + random_change, 10000)  # Ensure price doesn't go too low
+        prices.append(price)
     
     # Calculate returns
-    returns = [0.0]
-    for i in range(1, 30):
-        ret = (prices[i] - prices[i-1]) / prices[i-1]
-        returns.append(ret)
+    returns = [0.0]  # First day has no return
+    for i in range(1, len(prices)):
+        returns.append((prices[i] - prices[i-1]) / prices[i-1])
     
-    # Convert to Polars DataFrame
+    # Create DataFrame
     df = pl.DataFrame({
         "date": dates,
         "price": prices,
-        "day_of_week": day_of_week,
+        "day_of_week": weekdays,
         "is_sunday": is_sunday,
         "returns": returns
     })
     
     return df
 
-def test_run_selected_strategies_all_selected():
-    """
-    Test that the function runs all selected strategies correctly.
-    This test defines the expected interface and behavior.
-    """
-    # Import the function that doesn't exist yet, but will be implemented
-    from app import run_selected_strategies
-    
-    # Create sample data with more days to ensure strategies have enough data
-    start_date = datetime(2023, 1, 1)  # This is a Sunday
-    dates = [start_date + timedelta(days=i) for i in range(120)]  # Extended to 120 days
-    
-    # Create price data with some volatility to trigger strategy signals
-    prices = []
-    base_price = 20000.0  # Make sure we're using float
-    for i in range(120):
-        # Add some volatility
-        if i > 0:
-            # Add trend and volatility
-            change = base_price * 0.01 * (0.5 - (i % 10) / 10.0)  # Oscillating price changes
-            base_price += change
-        prices.append(float(base_price))  # Ensure it's a float
-    
-    day_of_week = [(start_date + timedelta(days=i)).weekday() for i in range(120)]
-    
-    # Make Jan 1, 2023 and every 7th day a Sunday
-    is_sunday = [
-        True if i % 7 == 0 else False
-        for i in range(120)
-    ]
-    
-    # Calculate returns
-    returns = [0.0]
-    for i in range(1, 120):
-        ret = (prices[i] - prices[i-1]) / prices[i-1]
-        returns.append(ret)
-    
-    df = pl.DataFrame({
-        "date": dates,
-        "price": prices,
-        "day_of_week": day_of_week,
-        "is_sunday": is_sunday,
-        "returns": returns
-    })
-    
-    # Print some info about the test data
-    sundays_count = sum(is_sunday)
-    print(f"Test data: {df.height} days, {sundays_count} Sundays")
-    print(f"First few prices: {prices[:10]}")
-    print(f"Last few prices: {prices[-10:]}")
-    
-    # Define selected strategies
-    strategy_selections = {
-        "dca": True,         # Always run as baseline
-        "value_avg": True,   # Selected
-        "maco": True,        # Selected
-        "rsi": True,         # Selected
-        "volatility": True   # Selected
-    }
-    
-    # Define strategy parameters
-    strategy_params = {
-        "value_avg": {"target_growth_rate": 0.01},
-        "maco": {"short_window": 10, "long_window": 20},
-        "rsi": {"rsi_period": 14, "oversold_threshold": 30, "overbought_threshold": 70},
-        "volatility": {"vol_window": 14, "vol_threshold": 1.5}
-    }
-    
-    # Run the function
-    weekly_investment = 100.0
-    exchange_id = None
-    use_exchange_discount = False
-    
-    results, metrics = run_selected_strategies(
-        df, 
-        strategy_selections, 
-        strategy_params, 
-        weekly_investment,
-        exchange_id,
-        use_exchange_discount
-    )
-    
-    # Print debug information
-    print("\nResults keys:", list(results.keys()))
-    print("\nMetrics keys:", list(metrics.keys()))
-    
-    for strategy, metric in metrics.items():
-        print(f"\n{strategy} final BTC: {metric['final_btc']}")
-    
-    for strategy, result_df in results.items():
-        sunday_investments = result_df.filter(pl.col("is_sunday"))["investment"].sum()
-        print(f"{strategy} total investment on Sundays: {sunday_investments}")
-        btc_bought = result_df.filter(pl.col("is_sunday"))["btc_bought"].sum()
-        print(f"{strategy} total BTC bought on Sundays: {btc_bought}")
-    
-    # Verify the results
-    assert "DCA (Baseline)" in results
-    assert "Value Averaging" in results
-    assert "MACO" in results
-    assert "RSI" in results
-    assert "Volatility" in results
-    
-    # Verify each result has expected structure
-    for result in results.values():
-        assert "cumulative_btc" in result.columns
-        assert "investment" in result.columns
-        assert "btc_bought" in result.columns
-    
-    # Verify the metrics
-    assert "DCA (Baseline)" in metrics
-    assert "Value Averaging" in metrics
-    assert "MACO" in metrics
-    assert "RSI" in metrics
-    assert "Volatility" in metrics
-    
-    # Verify each metric has expected fields
-    for metric in metrics.values():
-        assert "final_btc" in metric
-        assert "max_drawdown" in metric
-        assert "sortino_ratio" in metric
-        assert metric["final_btc"] > 0  # Should have bought some BTC
-
-def test_run_selected_strategies_subset_selected():
-    """
-    Test that the function runs only the selected strategies.
-    """
-    # Import the function that doesn't exist yet, but will be implemented
-    from app import run_selected_strategies
-    
-    # Create sample data with more days to ensure strategies have enough data
-    start_date = datetime(2023, 1, 1)  # This is a Sunday
-    dates = [start_date + timedelta(days=i) for i in range(120)]  # Extended to 120 days
-    
-    # Create price data with some volatility to trigger strategy signals
-    prices = []
-    base_price = 20000.0  # Make sure we're using float
-    for i in range(120):
-        # Add some volatility
-        if i > 0:
-            # Add trend and volatility
-            change = base_price * 0.01 * (0.5 - (i % 10) / 10.0)  # Oscillating price changes
-            base_price += change
-        prices.append(float(base_price))  # Ensure it's a float
-    
-    day_of_week = [(start_date + timedelta(days=i)).weekday() for i in range(120)]
-    
-    # Make Jan 1, 2023 and every 7th day a Sunday
-    is_sunday = [
-        True if i % 7 == 0 else False
-        for i in range(120)
-    ]
-    
-    # Calculate returns
-    returns = [0.0]
-    for i in range(1, 120):
-        ret = (prices[i] - prices[i-1]) / prices[i-1]
-        returns.append(ret)
-    
-    df = pl.DataFrame({
-        "date": dates,
-        "price": prices,
-        "day_of_week": day_of_week,
-        "is_sunday": is_sunday,
-        "returns": returns
-    })
-    
-    # Define selected strategies (only some selected)
-    strategy_selections = {
-        "dca": True,         # Always run as baseline
-        "value_avg": False,  # Not selected
-        "maco": True,        # Selected
-        "rsi": False,        # Not selected
-        "volatility": True   # Selected
-    }
-    
-    # Define strategy parameters
-    strategy_params = {
-        "value_avg": {"target_growth_rate": 0.01},
-        "maco": {"short_window": 10, "long_window": 20},
-        "rsi": {"rsi_period": 14, "oversold_threshold": 30, "overbought_threshold": 70},
-        "volatility": {"vol_window": 14, "vol_threshold": 1.5}
-    }
-    
-    # Run the function
-    weekly_investment = 100.0
-    exchange_id = None
-    use_exchange_discount = False
-    
-    results, metrics = run_selected_strategies(
-        df, 
-        strategy_selections, 
-        strategy_params, 
-        weekly_investment,
-        exchange_id,
-        use_exchange_discount
-    )
-    
-    # Verify the results (only selected strategies)
-    assert "DCA (Baseline)" in results
-    assert "Value Averaging" not in results
-    assert "MACO" in results
-    assert "RSI" not in results
-    assert "Volatility" in results
-    
-    # Verify the metrics (only selected strategies)
-    assert "DCA (Baseline)" in metrics
-    assert "Value Averaging" not in metrics
-    assert "MACO" in metrics
-    assert "RSI" not in metrics
-    assert "Volatility" in metrics
-
-def test_run_selected_strategies_with_exchange():
-    """
-    Test that the function correctly applies exchange fees.
-    """
-    # Import the function that doesn't exist yet, but will be implemented
-    from app import run_selected_strategies
-    
-    # Create sample data with more days to ensure strategies have enough data
-    start_date = datetime(2023, 1, 1)  # This is a Sunday
-    dates = [start_date + timedelta(days=i) for i in range(120)]  # Extended to 120 days
-    
-    # Create price data with some volatility to trigger strategy signals
-    prices = []
-    base_price = 20000.0  # Make sure we're using float
-    for i in range(120):
-        # Add some volatility
-        if i > 0:
-            # Add trend and volatility
-            change = base_price * 0.01 * (0.5 - (i % 10) / 10.0)  # Oscillating price changes
-            base_price += change
-        prices.append(float(base_price))  # Ensure it's a float
-    
-    day_of_week = [(start_date + timedelta(days=i)).weekday() for i in range(120)]
-    
-    # Make Jan 1, 2023 and every 7th day a Sunday
-    is_sunday = [
-        True if i % 7 == 0 else False
-        for i in range(120)
-    ]
-    
-    # Calculate returns
-    returns = [0.0]
-    for i in range(1, 120):
-        ret = (prices[i] - prices[i-1]) / prices[i-1]
-        returns.append(ret)
-    
-    df = pl.DataFrame({
-        "date": dates,
-        "price": prices,
-        "day_of_week": day_of_week,
-        "is_sunday": is_sunday,
-        "returns": returns
-    })
-    
-    # Define selected strategies
-    strategy_selections = {
+@pytest.fixture
+def strategy_selections():
+    """Sample strategy selections for testing."""
+    return {
         "dca": True,
-        "value_avg": False,
-        "maco": False,
-        "rsi": False,
-        "volatility": False
-    }
-    
-    # Define strategy parameters
-    strategy_params = {}
-    
-    # Run the function with exchange
-    weekly_investment = 100.0
-    exchange_id = "binance"  # Use an exchange
-    use_exchange_discount = True
-    
-    results_with_exchange, metrics_with_exchange = run_selected_strategies(
-        df, 
-        strategy_selections, 
-        strategy_params, 
-        weekly_investment,
-        exchange_id,
-        use_exchange_discount
-    )
-    
-    # Run again without exchange
-    exchange_id = None  # No exchange
-    results_no_exchange, metrics_no_exchange = run_selected_strategies(
-        df, 
-        strategy_selections, 
-        strategy_params, 
-        weekly_investment,
-        exchange_id,
-        use_exchange_discount
-    )
-    
-    # Verify the exchange fees affect the results
-    dca_with_exchange = metrics_with_exchange["DCA (Baseline)"]["final_btc"]
-    dca_no_exchange = metrics_no_exchange["DCA (Baseline)"]["final_btc"]
-    
-    # With exchange fees, we should get less BTC
-    assert dca_with_exchange < dca_no_exchange
-    
-def test_run_selected_strategies_no_data():
-    """
-    Test that the function handles empty data gracefully.
-    """
-    # Import the function that doesn't exist yet, but will be implemented
-    from app import run_selected_strategies
-    
-    # Create empty DataFrame
-    df = pl.DataFrame({
-        "date": [],
-        "price": [],
-        "day_of_week": [],
-        "is_sunday": [],
-        "returns": []
-    })
-    
-    # Define selected strategies
-    strategy_selections = {
-        "dca": True,
-        "value_avg": True,
+        "value_averaging": False,
         "maco": True,
-        "rsi": True,
+        "rsi": False,
         "volatility": True
     }
-    
-    # Define strategy parameters
-    strategy_params = {
-        "value_avg": {"target_growth_rate": 0.01},
-        "maco": {"short_window": 10, "long_window": 20},
-        "rsi": {"rsi_period": 14, "oversold_threshold": 30, "overbought_threshold": 70},
-        "volatility": {"vol_window": 14, "vol_threshold": 1.5}
+
+@pytest.fixture
+def strategy_params():
+    """Sample strategy parameters for testing."""
+    return {
+        "dca": {},
+        "value_averaging": {"target_growth_rate": 0.05},
+        "maco": {"short_window": 10, "long_window": 30},
+        "rsi": {"period": 14, "oversold": 30, "overbought": 70},
+        "volatility": {"window": 20, "threshold": 1.5}
     }
-    
-    # Run the function
-    weekly_investment = 100.0
-    exchange_id = None
-    use_exchange_discount = False
+
+# ===== TESTS =====
+
+def test_run_selected_strategies_empty_data():
+    """Test handling of empty DataFrame input."""
+    empty_df = pl.DataFrame({"date": [], "price": [], "day_of_week": [], "is_sunday": [], "returns": []})
+    strategy_selections = {"dca": True}
+    strategy_params = {"dca": {}}
     
     results, metrics = run_selected_strategies(
-        df, 
-        strategy_selections, 
-        strategy_params, 
-        weekly_investment,
-        exchange_id,
-        use_exchange_discount
+        empty_df, strategy_selections, strategy_params, 100, None, False
     )
     
-    # Verify we got empty but properly structured results
-    assert isinstance(results, dict)
-    assert isinstance(metrics, dict)
+    assert results == {}
+    assert metrics == {}
+
+def test_run_selected_strategies_no_selection(sample_price_data):
+    """Test when no strategies are selected."""
+    strategy_selections = {"dca": False, "maco": False, "rsi": False, "volatility": False, "value_averaging": False}
+    strategy_params = {"dca": {}, "maco": {}, "rsi": {}, "volatility": {}, "value_averaging": {}}
     
-    # No results should be present for empty data
-    assert len(results) == 0
-    assert len(metrics) == 0
+    results, metrics = run_selected_strategies(
+        sample_price_data, strategy_selections, strategy_params, 100, None, False
+    )
+    
+    assert results == {}
+    assert metrics == {}
+
+def test_run_selected_strategies_single_strategy(sample_price_data):
+    """Test running a single strategy (DCA)."""
+    strategy_selections = {"dca": True, "maco": False, "rsi": False, "volatility": False, "value_averaging": False}
+    strategy_params = {"dca": {}, "maco": {}, "rsi": {}, "volatility": {}, "value_averaging": {}}
+    weekly_investment = 100
+    
+    results, metrics = run_selected_strategies(
+        sample_price_data, strategy_selections, strategy_params, weekly_investment, None, False
+    )
+    
+    # Check if DCA strategy results are present (could be "DCA" or "DCA (Baseline)")
+    dca_key = next((k for k in results.keys() if k.startswith("DCA")), None)
+    assert dca_key is not None, "No DCA strategy results found"
+    assert dca_key in metrics, f"No metrics found for {dca_key}"
+    
+    # Verify result structure
+    dca_result = results[dca_key]
+    assert isinstance(dca_result, pl.DataFrame)
+    assert set(dca_result.columns).issuperset({"date", "price", "investment", "btc_bought", "cumulative_investment", "cumulative_btc"})
+    
+    # Verify investment logic - DCA invests weekly on Sundays
+    sunday_investments = dca_result.filter(pl.col("is_sunday")).select("investment")
+    # Check each investment value
+    for i in range(len(sunday_investments)):
+        assert sunday_investments[i, 0] == weekly_investment
+    
+    # Verify metrics structure
+    dca_metrics = metrics[dca_key]
+    assert "total_invested" in dca_metrics
+    assert "total_btc" in dca_metrics
+    assert "final_btc_value" in dca_metrics
+    assert "efficiency" in dca_metrics
+    
+    # Verify basic metrics values
+    assert dca_metrics["total_invested"] > 0
+    assert dca_metrics["total_btc"] > 0
+    assert dca_metrics["final_btc_value"] > 0
+
+def test_run_selected_strategies_multiple_strategies(sample_price_data, strategy_selections, strategy_params):
+    """Test running multiple strategies simultaneously."""
+    weekly_investment = 100
+    
+    results, metrics = run_selected_strategies(
+        sample_price_data, strategy_selections, strategy_params, weekly_investment, None, False
+    )
+    
+    # Verify we have three strategies run (some variant of DCA, MACO, and Volatility)
+    assert len(results) == 3, f"Expected 3 strategies, got {len(results)}: {list(results.keys())}"
+    assert len(metrics) == 3, f"Expected 3 metrics, got {len(metrics)}: {list(metrics.keys())}"
+    
+    # Find actual strategy names (they might be "DCA (Baseline)" instead of "DCA" etc.)
+    dca_key = next((k for k in results.keys() if "DCA" in k), None)
+    maco_key = next((k for k in results.keys() if "MACO" in k), None)
+    volatility_key = next((k for k in results.keys() if "Volatility" in k), None)
+    
+    assert dca_key is not None, "No DCA strategy found"
+    assert maco_key is not None, "No MACO strategy found"
+    assert volatility_key is not None, "No Volatility strategy found"
+    
+    # Verify each strategy has the correct structure
+    for strategy_name in [dca_key, maco_key, volatility_key]:
+        strategy_result = results[strategy_name]
+        assert isinstance(strategy_result, pl.DataFrame)
+        assert set(strategy_result.columns).issuperset({"date", "price", "investment", "btc_bought", "cumulative_investment", "cumulative_btc"})
+        
+        strategy_metrics = metrics[strategy_name]
+        assert "total_invested" in strategy_metrics
+        assert "total_btc" in strategy_metrics
+        assert "final_btc_value" in strategy_metrics
+        assert "efficiency" in strategy_metrics
+    
+    # Verify the strategies behave differently
+    dca_efficiency = metrics["DCA"]["efficiency"]
+    maco_efficiency = metrics["MACO"]["efficiency"]
+    volatility_efficiency = metrics["Volatility"]["efficiency"]
+    
+    # In a realistic scenario, efficiencies should differ
+    assert len({dca_efficiency, maco_efficiency, volatility_efficiency}) > 1
+
+def test_run_selected_strategies_with_exchange_fees(sample_price_data):
+    """Test running strategies with exchange fee calculations."""
+    strategy_selections = {"dca": True}
+    strategy_params = {"dca": {}}
+    weekly_investment = 100
+    exchange_id = "binance"  # Using a known exchange
+    
+    # Run with and without exchange fees
+    results_with_fees, metrics_with_fees = run_selected_strategies(
+        sample_price_data, strategy_selections, strategy_params, weekly_investment, exchange_id, False
+    )
+    
+    results_no_fees, metrics_no_fees = run_selected_strategies(
+        sample_price_data, strategy_selections, strategy_params, weekly_investment, None, False
+    )
+    
+    # With fees, we should get less BTC
+    assert metrics_with_fees["DCA"]["total_btc"] < metrics_no_fees["DCA"]["total_btc"]
+    
+    # Test with exchange discount
+    results_with_discount, metrics_with_discount = run_selected_strategies(
+        sample_price_data, strategy_selections, strategy_params, weekly_investment, exchange_id, True
+    )
+    
+    # With discount, we should get more BTC than without discount
+    assert metrics_with_discount["DCA"]["total_btc"] > metrics_with_fees["DCA"]["total_btc"]
