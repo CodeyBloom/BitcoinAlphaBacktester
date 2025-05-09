@@ -25,11 +25,9 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
       
-      - name: Fetch 10 years of Bitcoin data (AUD)
+      - name: Fetch Bitcoin historical data (AUD only)
         run: python scripts/fetch_10yr_bitcoin_data.py --currency AUD --years 10 --output data/bitcoin_prices.arrow
-      
-      - name: Fetch 10 years of Bitcoin data (USD)
-        run: python scripts/fetch_10yr_bitcoin_data.py --currency USD --years 10 --output data/bitcoin_prices_usd.arrow
+        continue-on-error: false  # Fail the workflow if we can't get data
       
       - name: Run optimizations for predefined time periods
         run: python scripts/run_all_optimizations.py
