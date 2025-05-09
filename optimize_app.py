@@ -79,8 +79,8 @@ def run_optimizer_view():
     start_date_str = start_date.strftime("%d%m%Y")
     end_date_str = end_date.strftime("%d%m%Y")
     
-    # Display selected time period for debugging
-    st.sidebar.info(f"Selected period: {selected_period} ({start_date_str} to {end_date_str})")
+    # Keep selected time period for internal reference
+    # Don't show it to the user
     
     # Strategy selection
     st.sidebar.header("Strategies")
@@ -171,16 +171,16 @@ def run_optimizer_view():
             # Use the appropriate generator function based on strategy
             if strategy == "dca":
                 create_dca_optimization(start_date_str, end_date_str, currency_code)
-                st.info(f"Generated optimization data for {strategy} strategy.")
+                # Generated optimization data without showing info message
             elif strategy == "maco":
                 create_maco_optimization(start_date_str, end_date_str, currency_code)
-                st.info(f"Generated optimization data for {strategy} strategy.")
+                # Generated optimization data without showing info message
             elif strategy == "rsi":
                 create_rsi_optimization(start_date_str, end_date_str, currency_code)
-                st.info(f"Generated optimization data for {strategy} strategy.")
+                # Generated optimization data without showing info message
             elif strategy == "volatility":
                 create_volatility_optimization(start_date_str, end_date_str, currency_code)
-                st.info(f"Generated optimization data for {strategy} strategy.")
+                # Generated optimization data without showing info message
             
             # Try loading again after generating
             if os.path.exists(file_path):
@@ -189,7 +189,7 @@ def run_optimizer_view():
             st.error(f"Failed to generate optimization data for {strategy}: {str(e)}")
             
         # If generation failed or we don't have the generator functions, use fallback data
-        st.warning(f"Using fallback data for {strategy} strategy.")
+        # Don't show warning about using fallback data
         
         # Create fallback data based on strategy
         if strategy == "dca":
