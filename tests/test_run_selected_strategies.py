@@ -51,19 +51,34 @@ def test_run_selected_strategies_all_selected():
     # Import the function that doesn't exist yet, but will be implemented
     from app import run_selected_strategies
     
-    # Create sample data
+    # Create sample data with more days to ensure strategies have enough data
     start_date = datetime(2023, 1, 1)  # This is a Sunday
-    dates = [start_date + timedelta(days=i) for i in range(30)]
-    prices = [20000 + i * 100 for i in range(30)]
-    day_of_week = [(start_date + timedelta(days=i)).weekday() for i in range(30)]
+    dates = [start_date + timedelta(days=i) for i in range(120)]  # Extended to 120 days
     
-    # Ensure we have proper Sundays (Python's weekday() uses 6 for Sunday)
+    # Create price data with some volatility to trigger strategy signals
+    prices = []
+    base_price = 20000.0  # Make sure we're using float
+    for i in range(120):
+        # Add some volatility
+        if i > 0:
+            # Add trend and volatility
+            change = base_price * 0.01 * (0.5 - (i % 10) / 10.0)  # Oscillating price changes
+            base_price += change
+        prices.append(float(base_price))  # Ensure it's a float
+    
+    day_of_week = [(start_date + timedelta(days=i)).weekday() for i in range(120)]
+    
+    # Make Jan 1, 2023 and every 7th day a Sunday
     is_sunday = [
-        True if i % 7 == 0 else False  # Make every 7th day a Sunday
-        for i in range(30)
+        True if i % 7 == 0 else False
+        for i in range(120)
     ]
     
-    returns = [0.0] + [(prices[i] - prices[i-1]) / prices[i-1] for i in range(1, 30)]
+    # Calculate returns
+    returns = [0.0]
+    for i in range(1, 120):
+        ret = (prices[i] - prices[i-1]) / prices[i-1]
+        returns.append(ret)
     
     df = pl.DataFrame({
         "date": dates,
@@ -72,6 +87,12 @@ def test_run_selected_strategies_all_selected():
         "is_sunday": is_sunday,
         "returns": returns
     })
+    
+    # Print some info about the test data
+    sundays_count = sum(is_sunday)
+    print(f"Test data: {df.height} days, {sundays_count} Sundays")
+    print(f"First few prices: {prices[:10]}")
+    print(f"Last few prices: {prices[-10:]}")
     
     # Define selected strategies
     strategy_selections = {
@@ -103,6 +124,19 @@ def test_run_selected_strategies_all_selected():
         exchange_id,
         use_exchange_discount
     )
+    
+    # Print debug information
+    print("\nResults keys:", list(results.keys()))
+    print("\nMetrics keys:", list(metrics.keys()))
+    
+    for strategy, metric in metrics.items():
+        print(f"\n{strategy} final BTC: {metric['final_btc']}")
+    
+    for strategy, result_df in results.items():
+        sunday_investments = result_df.filter(pl.col("is_sunday"))["investment"].sum()
+        print(f"{strategy} total investment on Sundays: {sunday_investments}")
+        btc_bought = result_df.filter(pl.col("is_sunday"))["btc_bought"].sum()
+        print(f"{strategy} total BTC bought on Sundays: {btc_bought}")
     
     # Verify the results
     assert "DCA (Baseline)" in results
@@ -138,19 +172,34 @@ def test_run_selected_strategies_subset_selected():
     # Import the function that doesn't exist yet, but will be implemented
     from app import run_selected_strategies
     
-    # Create sample data
+    # Create sample data with more days to ensure strategies have enough data
     start_date = datetime(2023, 1, 1)  # This is a Sunday
-    dates = [start_date + timedelta(days=i) for i in range(30)]
-    prices = [20000 + i * 100 for i in range(30)]
-    day_of_week = [(start_date + timedelta(days=i)).weekday() for i in range(30)]
+    dates = [start_date + timedelta(days=i) for i in range(120)]  # Extended to 120 days
     
-    # Ensure we have proper Sundays (Python's weekday() uses 6 for Sunday)
+    # Create price data with some volatility to trigger strategy signals
+    prices = []
+    base_price = 20000.0  # Make sure we're using float
+    for i in range(120):
+        # Add some volatility
+        if i > 0:
+            # Add trend and volatility
+            change = base_price * 0.01 * (0.5 - (i % 10) / 10.0)  # Oscillating price changes
+            base_price += change
+        prices.append(float(base_price))  # Ensure it's a float
+    
+    day_of_week = [(start_date + timedelta(days=i)).weekday() for i in range(120)]
+    
+    # Make Jan 1, 2023 and every 7th day a Sunday
     is_sunday = [
-        True if i % 7 == 0 else False  # Make every 7th day a Sunday
-        for i in range(30)
+        True if i % 7 == 0 else False
+        for i in range(120)
     ]
     
-    returns = [0.0] + [(prices[i] - prices[i-1]) / prices[i-1] for i in range(1, 30)]
+    # Calculate returns
+    returns = [0.0]
+    for i in range(1, 120):
+        ret = (prices[i] - prices[i-1]) / prices[i-1]
+        returns.append(ret)
     
     df = pl.DataFrame({
         "date": dates,
@@ -212,19 +261,34 @@ def test_run_selected_strategies_with_exchange():
     # Import the function that doesn't exist yet, but will be implemented
     from app import run_selected_strategies
     
-    # Create sample data
+    # Create sample data with more days to ensure strategies have enough data
     start_date = datetime(2023, 1, 1)  # This is a Sunday
-    dates = [start_date + timedelta(days=i) for i in range(30)]
-    prices = [20000 + i * 100 for i in range(30)]
-    day_of_week = [(start_date + timedelta(days=i)).weekday() for i in range(30)]
+    dates = [start_date + timedelta(days=i) for i in range(120)]  # Extended to 120 days
     
-    # Ensure we have proper Sundays (Python's weekday() uses 6 for Sunday)
+    # Create price data with some volatility to trigger strategy signals
+    prices = []
+    base_price = 20000.0  # Make sure we're using float
+    for i in range(120):
+        # Add some volatility
+        if i > 0:
+            # Add trend and volatility
+            change = base_price * 0.01 * (0.5 - (i % 10) / 10.0)  # Oscillating price changes
+            base_price += change
+        prices.append(float(base_price))  # Ensure it's a float
+    
+    day_of_week = [(start_date + timedelta(days=i)).weekday() for i in range(120)]
+    
+    # Make Jan 1, 2023 and every 7th day a Sunday
     is_sunday = [
-        True if i % 7 == 0 else False  # Make every 7th day a Sunday
-        for i in range(30)
+        True if i % 7 == 0 else False
+        for i in range(120)
     ]
     
-    returns = [0.0] + [(prices[i] - prices[i-1]) / prices[i-1] for i in range(1, 30)]
+    # Calculate returns
+    returns = [0.0]
+    for i in range(1, 120):
+        ret = (prices[i] - prices[i-1]) / prices[i-1]
+        returns.append(ret)
     
     df = pl.DataFrame({
         "date": dates,
