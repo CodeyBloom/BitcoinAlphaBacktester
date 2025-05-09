@@ -13,7 +13,8 @@ from strategies import (
     value_averaging_strategy,
     maco_strategy,
     rsi_strategy,
-    volatility_strategy
+    volatility_strategy,
+    xgboost_ml_strategy
 )
 
 @pytest.fixture
@@ -182,3 +183,47 @@ def test_volatility_strategy(price_data):
     volatilities = result.filter(~pl.col("volatility").is_null())["volatility"]
     assert len(volatilities) > 0
     assert all(v >= 0 for v in volatilities)  # Volatility should always be non-negative
+
+def test_xgboost_ml_strategy(price_data):
+    """Test XGBoost ML trading strategy"""
+    weekly_investment = 100.0
+    training_window = 14
+    prediction_threshold = 0.55
+    features = ["returns", "price"]
+    
+    # Run strategy
+    result = xgboost_ml_strategy(
+        price_data, 
+        weekly_investment, 
+        training_window=training_window,
+        prediction_threshold=prediction_threshold,
+        features=features
+    )
+    
+    # Basic validations
+    assert "investment" in result.columns
+    assert "btc_bought" in result.columns
+    assert "cumulative_btc" in result.columns
+    assert "prediction" in result.columns
+    assert "confidence" in result.columns
+    
+    # There should be investments only on Sundays
+    non_sunday_investments = result.filter(~pl.col("is_sunday")).select("investment").sum().item()
+    assert non_sunday_investments == 0
+    
+    # Sunday investments should add up to a positive amount
+    sunday_investments = result.filter(pl.col("is_sunday")).select("investment").sum().item()
+    assert sunday_investments > 0
+    
+    # Final BTC should be positive
+    assert result["cumulative_btc"][-1] > 0
+    
+    # Confidence values should be between 0 and 1
+    confidence_values = result.filter(~pl.col("confidence").is_null())["confidence"]
+    if len(confidence_values) > 0:
+        assert all(0 <= c <= 1 for c in confidence_values)
+    
+    # Predictions should be either 0 or 1 (binary classification)
+    prediction_values = result.filter(~pl.col("prediction").is_null())["prediction"]
+    if len(prediction_values) > 0:
+        assert all(p in [0, 1] for p in prediction_values)

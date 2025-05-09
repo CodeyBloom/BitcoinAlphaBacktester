@@ -12,7 +12,9 @@ dependencies = [
     "polars>=1.29.0",
     "pytest>=8.3.5",
     "pytest-cov>=6.1.1",
+    "scikit-learn>=1.6.1",
     "scikit-optimize>=0.10.2",
     "streamlit>=1.45.0",
     "trafilatura>=2.0.0",
+    "xgboost>=3.0.0",
 ]
